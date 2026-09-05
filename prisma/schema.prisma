@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  patient
+  family_caregiver
+}
+
+enum DeviceType {
+  esp32cam
+  watch
+}
+
+enum LogEntryType {
+  frame
+  geofence
+  heartrate
+  quiz
+}
+
+enum AgentDecision {
+  log_only
+  alert_family
+  check_in
+}
+
+model Patient {
+  id        String   @id @default(uuid())
+  name      String
+  dob       DateTime
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users         User[]
+  devices       Device[]
+  logEntries    LogEntry[]
+  enrolledFaces EnrolledFace[]
+  geofenceZones GeofenceZone[]
+  quizQuestions QuizQuestion[]
+
+  @@map("patients")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  patientId    String   @map("patient_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  patient          Patient        @relation(fields: [patientId], references: [id])
+  createdZones     GeofenceZone[] @relation("ZoneCreator")
+
+  @@map("users")
+}
+
+model Device {
+  id          String     @id @default(uuid())
+  patientId   String     @map("patient_id")
+  deviceType  DeviceType @map("device_type")
+  identifier  String
+  apiKeyHash  String     @map("api_key_hash")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  patient    Patient    @relation(fields: [patientId], references: [id])
+  logEntries LogEntry[]
+
+  @@map("devices")
+}
+
+model LogEntry {
+  id                 String         @id @default(uuid())
+  patientId          String         @map("patient_id")
+  deviceId           String?        @map("device_id")
+  entryType          LogEntryType   @map("entry_type")
+  timestamp          DateTime       @default(now())
+  payload            Json
+  requiresAttention  Boolean        @default(false) @map("requires_attention")
+  agentDecision      AgentDecision? @map("agent_decision")
+  imagePublicId      String?        @map("image_public_id")
+  isSaved            Boolean        @default(false) @map("is_saved")
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  patient      Patient         @relation(fields: [patientId], references: [id])
+  device       Device?         @relation(fields: [deviceId], references: [id])
+  faces        LogEntryFace[]
+  quizSourceOf QuizQuestion[]
+
+  @@map("log_entries")
+}
+
+model EnrolledFace {
+  id                  String   @id @default(uuid())
+  patientId           String   @map("patient_id")
+  name                String
+  referenceEmbedding  Json     @map("reference_embedding")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  patient Patient        @relation(fields: [patientId], references: [id])
+  logs    LogEntryFace[]
+
+  @@map("enrolled_faces")
+}
+
+model LogEntryFace {
+  logEntryId     String @map("log_entry_id")
+  enrolledFaceId String @map("enrolled_face_id")
+
+  logEntry     LogEntry     @relation(fields: [logEntryId], references: [id])
+  enrolledFace EnrolledFace @relation(fields: [enrolledFaceId], references: [id])
+
+  @@id([logEntryId, enrolledFaceId])
+  @@map("log_entry_faces")
+}
+
+model GeofenceZone {
+  id            String   @id @default(uuid())
+  patientId     String   @map("patient_id")
+  name          String
+  centerLat     Float    @map("center_lat")
+  centerLng     Float    @map("center_lng")
+  radiusMeters  Float    @map("radius_meters")
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  creator User    @relation("ZoneCreator", fields: [createdBy], references: [id])
+
+  @@map("geofence_zones")
+}
+
+model QuizQuestion {
+  id                String   @id @default(uuid())
+  patientId         String   @map("patient_id")
+  date              DateTime @default(now())
+  question          String
+  correctAnswer     String   @map("correct_answer")
+  sourceLogEntryId  String?  @map("source_log_entry_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  patient        Patient       @relation(fields: [patientId], references: [id])
+  sourceLogEntry LogEntry?     @relation(fields: [sourceLogEntryId], references: [id])
+  attempts       QuizAttempt[]
+
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id              String   @id @default(uuid())
+  quizQuestionId  String   @map("quiz_question_id")
+  answered        String
+  correct         Boolean
+  timestamp       DateTime @default(now())
+
+  quizQuestion QuizQuestion @relation(fields: [quizQuestionId], references: [id])
+
+  @@map("quiz_attempts")
+}
