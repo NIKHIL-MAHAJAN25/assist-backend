@@ -29,7 +29,7 @@ async function requireDeviceAuth(req, res, next) {
   const apiKey = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!apiKey) return res.status(401).json({ error: 'Missing device API key' });
 
-  const deviceId = req.body.device_id;
+  const deviceId = (req.body && req.body.device_id) || req.query.device_id;
   if (!deviceId) return res.status(400).json({ error: 'device_id is required' });
 
   const device = await prisma.device.findUnique({ where: { id: deviceId } });

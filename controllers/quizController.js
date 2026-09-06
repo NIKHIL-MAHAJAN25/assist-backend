@@ -14,8 +14,7 @@ function endOfDay(date) {
 }
 
 async function getTodayQuiz(req, res) {
-  const { patient_id } = req.query;
-  if (!patient_id) return res.status(400).json({ error: 'patient_id is required' });
+  const patient_id = req.device.patientId;
 
   const today = new Date();
   const existing = await prisma.quizQuestion.findMany({
@@ -52,6 +51,11 @@ async function recordAttempt(req, res) {
   const { quiz_question_id, answered, correct } = req.body;
   if (!quiz_question_id || answered === undefined || correct === undefined) {
     return res.status(400).json({ error: 'quiz_question_id, answered, and correct are required' });
+  }
+
+  const question = await prisma.quizQuestion.findUnique({ where: { id: quiz_question_id } });
+  if (!question || question.patientId !== req.device.patientId) {
+    return res.status(404).json({ error: 'Quiz question not found' });
   }
 
   const attempt = await prisma.quizAttempt.create({
