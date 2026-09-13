@@ -9,6 +9,7 @@ const geofenceZoneRoutes = require('./routes/geofenceZones');
 const enrolledFaceRoutes = require('./routes/enrolledFaces');
 const quizRoutes = require('./routes/quiz');
 const recallRoutes = require('./routes/recall');
+const patientRoutes = require('./routes/patients');
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use('/api', geofenceZoneRoutes);
 app.use('/api', enrolledFaceRoutes);
 app.use('/api', quizRoutes);
 app.use('/api', recallRoutes);
+app.use('/api', patientRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

@@ -7,7 +7,7 @@ async function login(req, res) {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email }, include: { patient: true } });
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
   const valid = await bcrypt.compare(password, user.passwordHash);
@@ -21,7 +21,13 @@ async function login(req, res) {
 
   res.json({
     token,
-    user: { id: user.id, name: user.name, role: user.role, patient_id: user.patientId },
+    user: {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      patient_id: user.patientId,
+      patient_name: user.patient.name,
+    },
   });
 }
 

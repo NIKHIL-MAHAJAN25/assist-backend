@@ -86,6 +86,7 @@ model LogEntry {
   agentDecision      AgentDecision? @map("agent_decision")
   imagePublicId      String?        @map("image_public_id")
   isSaved            Boolean        @default(false) @map("is_saved")
+  acknowledgedAt     DateTime?      @map("acknowledged_at")
   createdAt          DateTime       @default(now()) @map("created_at")
 
   patient      Patient         @relation(fields: [patientId], references: [id])

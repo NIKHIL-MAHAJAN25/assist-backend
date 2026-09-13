@@ -1,7 +1,7 @@
 const prisma = require('../config/prisma');
 
 async function listLogEntries(req, res) {
-  const { patient_id, type, from, to } = req.query;
+  const { patient_id, type, from, to, acknowledged } = req.query;
   if (!patient_id) return res.status(400).json({ error: 'patient_id is required' });
 
   const entries = await prisma.logEntry.findMany({
@@ -14,6 +14,8 @@ async function listLogEntries(req, res) {
           ...(to && { lte: new Date(to) }),
         },
       }),
+      ...(acknowledged === 'true' && { acknowledgedAt: { not: null } }),
+      ...(acknowledged === 'false' && { acknowledgedAt: null }),
     },
     orderBy: { timestamp: 'desc' },
   });
@@ -30,10 +32,18 @@ async function getLogEntry(req, res) {
 
 async function updateLogEntry(req, res) {
   const { id } = req.params;
-  const { is_saved } = req.body;
-  if (is_saved === undefined) return res.status(400).json({ error: 'is_saved is required' });
+  const { is_saved, acknowledged } = req.body;
+  if (is_saved === undefined && acknowledged === undefined) {
+    return res.status(400).json({ error: 'is_saved or acknowledged is required' });
+  }
 
-  const entry = await prisma.logEntry.update({ where: { id }, data: { isSaved: is_saved } });
+  const entry = await prisma.logEntry.update({
+    where: { id },
+    data: {
+      ...(is_saved !== undefined && { isSaved: is_saved }),
+      ...(acknowledged !== undefined && { acknowledgedAt: acknowledged ? new Date() : null }),
+    },
+  });
   res.json(entry);
 }
 
