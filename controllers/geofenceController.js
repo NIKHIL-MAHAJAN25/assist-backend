@@ -1,6 +1,8 @@
 const prisma = require('../config/prisma');
 const { isInsideAnyZone } = require('../services/geofenceService');
 
+const REFLAG_MINUTES = 30;
+
 async function checkGeofence(req, res) {
   const { device_id, lat, lng, timestamp } = req.body;
   if (!device_id || lat === undefined || lng === undefined) {
@@ -10,15 +12,35 @@ async function checkGeofence(req, res) {
   const device = req.device;
   const zones = await prisma.geofenceZone.findMany({ where: { patientId: device.patientId } });
   const insideSafeZone = isInsideAnyZone(lat, lng, zones);
+  const at = timestamp ? new Date(timestamp) : new Date();
+
+  // The phone pings every minute. Flag the moment she leaves, then at most one reminder every
+  // REFLAG_MINUTES while she stays out — not one alert per ping.
+  let requiresAttention = false;
+  if (!insideSafeZone) {
+    const [previous, lastFlag] = await Promise.all([
+      prisma.logEntry.findFirst({
+        where: { patientId: device.patientId, entryType: 'geofence' },
+        orderBy: { timestamp: 'desc' },
+      }),
+      prisma.logEntry.findFirst({
+        where: { patientId: device.patientId, entryType: 'geofence', requiresAttention: true },
+        orderBy: { timestamp: 'desc' },
+      }),
+    ]);
+    const justLeft = !previous || previous.payload?.inside_safe_zone !== false;
+    const reminderDue = !lastFlag || at - lastFlag.timestamp >= REFLAG_MINUTES * 60000;
+    requiresAttention = justLeft || reminderDue;
+  }
 
   const logEntry = await prisma.logEntry.create({
     data: {
       patientId: device.patientId,
       deviceId: device.id,
       entryType: 'geofence',
-      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      timestamp: at,
       payload: { lat, lng, inside_safe_zone: insideSafeZone },
-      requiresAttention: !insideSafeZone,
+      requiresAttention,
     },
   });
 
