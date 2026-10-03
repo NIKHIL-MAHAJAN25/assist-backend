@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#ECE7DF">
+<title>Please help me get home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #2A2622; --ink2: #4F4943; --ink3: #7D756B; --ivory: #FBF9F6; --linen: #ECE7DF;
+    --ok: #4D7C5A; --ok-soft: #EAF1EA; --watch: #AD772A; --watch-soft: #F7EEDD; --act: #B4503C;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { min-height: 100%; }
+  body {
+    font-family: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color: var(--ink); background: var(--linen);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* The same painted sky as the app, morning colours: calm, not alarming. */
+  .sky {
+    position: fixed; inset: 0; z-index: -1;
+    background:
+      radial-gradient(70vw 60vh at 0% 0%, #F3BE90, transparent 72%),
+      radial-gradient(70vw 70vh at 100% 15%, #F1D7A8, transparent 72%),
+      radial-gradient(70vw 70vh at 85% 105%, #C3D6B8, transparent 72%),
+      radial-gradient(65vw 70vh at 0% 100%, #E8B8AE, transparent 72%),
+      var(--linen);
+  }
+  main { max-width: 460px; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 18px 32px; }
+  .glass {
+    background: rgba(255,255,255,.55); border: 1px solid rgba(255,255,255,.75);
+    border-radius: 24px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 14px 34px -20px rgba(62,46,30,.35);
+  }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;
+    color: var(--watch); background: var(--watch-soft); padding: 6px 12px; border-radius: 999px; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--watch); }
+  .hero { padding: 22px; margin-top: 14px; }
+  .who { display: flex; align-items: center; gap: 14px; }
+  .avatar { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
+    background: #F2E0DD; color: #9A4A3E; font-weight: 700; font-size: 22px; flex: none; }
+  h1 { font-size: 28px; line-height: 1.15; letter-spacing: -.02em; }
+  .note { margin-top: 16px; font-size: 17px; line-height: 1.5; color: var(--ink2); }
+  .section { margin-top: 18px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--ink3);
+    text-transform: uppercase; padding-left: 6px; }
+  .stack { display: grid; gap: 10px; margin-top: 10px; }
+  .btn { display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit;
+    padding: 14px 16px; border-radius: 20px; border: 0; width: 100%; font: inherit; text-align: left; cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--ivory); }
+  .btn .ic { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; flex: none;
+    background: rgba(255,255,255,.14); }
+  .btn.glass .ic { background: rgba(255,255,255,.75); }
+  .btn b { display: block; font-size: 16px; font-weight: 600; }
+  .btn small { display: block; font-size: 13px; opacity: .7; margin-top: 1px; }
+  .btn svg { width: 20px; height: 20px; }
+  .done { background: var(--ok-soft); color: var(--ok); }
+  .muted { color: var(--ink3); font-size: 13px; line-height: 1.5; padding: 0 6px; }
+  .emergency { color: var(--act); font-weight: 600; text-decoration: none; }
+  footer { margin-top: 22px; text-align: center; }
+  .skeleton { height: 18px; border-radius: 9px; background: rgba(0,0,0,.06); margin-top: 10px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="sky"></div>
+<main>
+  <span class="pill"><i></i> Please help me get home</span>
+
+  <section class="glass hero" id="hero">
+    <div class="who">
+      <div class="avatar" id="avatar">·</div>
+      <h1 id="hello">Hello</h1>
+    </div>
+    <p class="note" id="note"><span class="skeleton" style="display:block;width:90%"></span><span class="skeleton" style="display:block;width:70%"></span></p>
+  </section>
+
+  <div id="contactsWrap" class="hidden">
+    <p class="section">Call my family</p>
+    <div class="stack" id="contacts"></div>
+  </div>
+
+  <p class="section">I'm with them</p>
+  <div class="stack">
+    <button class="btn glass" id="share">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span>
+      <span><b>Tell the family where we are</b><small>Shares this phone's location once. Nothing else.</small></span>
+    </button>
+    <a class="btn glass hidden" id="home" target="_blank" rel="noopener">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg></span>
+      <span><b>Directions to my home</b><small id="homeLabel">Opens maps</small></span>
+    </a>
+  </div>
+
+  <footer>
+    <p class="muted">Medical emergency? <a class="emergency" href="tel:112">Call 112</a></p>
+    <p class="muted" style="margin-top:10px">This tag was set up by the family with Assist. No app needed — thank you for helping.</p>
+  </footer>
+</main>
+
+<script>
+(function () {
+  var code = location.pathname.split('/').filter(Boolean).pop();
+  var api = '/api/public/tag/' + encodeURIComponent(code);
+  var phoneIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+  function el(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  fetch(api).then(function (r) { if (!r.ok) throw r; return r.json(); }).then(function (d) {
+    document.title = 'Please help ' + d.first_name + ' get home';
+    el('avatar').textContent = d.first_name.charAt(0).toUpperCase();
+    el('hello').textContent = "Hi, I'm " + d.first_name + '.';
+    el('note').textContent = d.note;
+    if (d.contacts && d.contacts.length) {
+      el('contacts').innerHTML = d.contacts.map(function (c, i) {
+        var who = c.relation ? c.name + ' (' + c.relation + ')' : c.name;
+        return '<a class="btn ' + (i === 0 ? 'primary' : 'glass') + '" href="tel:' + esc(c.phone.replace(/[^+\d]/g, '')) + '">' +
+          '<span class="ic">' + phoneIcon + '</span><span><b>Call ' + esc(who) + '</b><small>' + esc(c.phone) + '</small></span></a>';
+      }).join('');
+      el('contactsWrap').classList.remove('hidden');
+    }
+    if (d.home && d.home.lat != null) {
+      var h = el('home');
+      h.href = 'https://www.google.com/maps/dir/?api=1&destination=' + d.home.lat + ',' + d.home.lng;
+      el('homeLabel').textContent = d.home.label ? 'Near ' + d.home.label : 'Opens maps';
+      h.classList.remove('hidden');
+    }
+  }).catch(function () {
+    el('hello').textContent = 'This tag is no longer active';
+    el('note').textContent = 'If this person needs help, please stay with them and call 112.';
+    el('share').classList.add('hidden');
+  });
+
+  el('share').addEventListener('click', function () {
+    var b = el('share');
+    var small = b.querySelector('small');
+    var title = b.querySelector('b');
+    function send(body) {
+      return fetch(api + '/sighting', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    }
+    function done(withPlace) {
+      b.classList.add('done');
+      title.textContent = withPlace ? 'The family can see where you are' : 'The family has been told';
+      small.textContent = withPlace ? 'Thank you. Please stay with them if you can.' : "We couldn't get a location, but they know someone is with them.";
+      b.disabled = true;
+    }
+    title.textContent = 'Finding where you are…';
+    if (!navigator.geolocation) { send({}).then(function () { done(false); }); return; }
+    navigator.geolocation.getCurrentPosition(function (p) {
+      send({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }).then(function () { done(true); });
+    }, function () {
+      send({}).then(function () { done(false); });
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+  });
+})();
+</script>
+</body>
+</html>

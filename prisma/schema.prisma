@@ -22,6 +22,7 @@ enum LogEntryType {
   geofence
   heartrate
   quiz
+  sighting
 }
 
 enum AgentDecision {
@@ -36,7 +37,15 @@ model Patient {
   dob       DateTime
   createdAt DateTime @default(now()) @map("created_at")
 
-  users         User[]
+  // Emergency (NFC) tag: a short public code printed into the sticker's URL, and what a
+  // stranger who taps it is allowed to see.
+  tagCode     String? @unique @map("tag_code")
+  tagNote     String? @map("tag_note")
+  homeLabel   String? @map("home_label")
+  tagShowHome Boolean @default(true) @map("tag_show_home")
+
+  users             User[]
+  emergencyContacts EmergencyContact[]
   devices       Device[]
   logEntries    LogEntry[]
   enrolledFaces EnrolledFace[]
@@ -44,6 +53,19 @@ model Patient {
   quizQuestions QuizQuestion[]
 
   @@map("patients")
+}
+
+model EmergencyContact {
+  id        String  @id @default(uuid())
+  patientId String  @map("patient_id")
+  name      String
+  relation  String?
+  phone     String
+  sortOrder Int     @default(0) @map("sort_order")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("emergency_contacts")
 }
 
 model User {
