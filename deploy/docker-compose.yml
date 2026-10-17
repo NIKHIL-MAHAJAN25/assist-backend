@@ -1,0 +1,47 @@
+# Assist on the shared EC2 box. Run from this folder:  docker compose up -d --build
+#   assist-db   Postgres, private network only, data in the assist_pgdata volume.
+#   assist-api  the backend. Joins the existing Caddy network so Caddy can proxy to it by name,
+#               and publishes 127.0.0.1:3100 so the helpers running on the host can reach it.
+name: assist
+
+services:
+  assist-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: assistdb
+      POSTGRES_USER: assist_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - assist_pgdata:/var/lib/postgresql/data
+    networks: [assist]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assist_app -d assistdb"]
+      interval: 5s
+      retries: 10
+
+  assist-api:
+    build: ..
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://assist_app:${POSTGRES_PASSWORD}@assist-db:5432/assistdb
+      PORT: "3000"
+    depends_on:
+      assist-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3100:3000"
+    volumes:
+      - assist_journal:/app/journal
+    networks: [assist, caddy]
+
+volumes:
+  assist_pgdata:
+  assist_journal:
+
+networks:
+  assist:
+  caddy:
+    external: true
+    name: forgejo-stack_default

@@ -3,3 +3,4 @@ node_modules/
 *.log
 server.log
 server.err.log
+deploy/.env
