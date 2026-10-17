@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const { isInsideAnyZone } = require('../services/geofenceService');
+const { decideFor } = require('../services/decisionService');
 
 const REFLAG_MINUTES = 30;
 
@@ -44,6 +45,8 @@ async function checkGeofence(req, res) {
     },
   });
 
+  // Only ask the decision layer about pings that change something; routine in-zone pings stay rules-only.
+  if (requiresAttention) decideFor(logEntry.id);
   res.status(201).json({ log_entry_id: logEntry.id, inside_safe_zone: insideSafeZone });
 }
 

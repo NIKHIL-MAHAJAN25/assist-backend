@@ -25,6 +25,11 @@ enum LogEntryType {
   sighting
 }
 
+enum InviteKind {
+  caregiver
+  device
+}
+
 enum AgentDecision {
   log_only
   alert_family
@@ -51,6 +56,7 @@ model Patient {
   enrolledFaces EnrolledFace[]
   geofenceZones GeofenceZone[]
   quizQuestions QuizQuestion[]
+  invites       Invite[]
 
   @@map("patients")
 }
@@ -79,6 +85,7 @@ model User {
 
   patient          Patient        @relation(fields: [patientId], references: [id])
   createdZones     GeofenceZone[] @relation("ZoneCreator")
+  invitesSent      Invite[]       @relation("InviteCreator")
 
   @@map("users")
 }
@@ -185,4 +192,23 @@ model QuizAttempt {
   quizQuestion QuizQuestion @relation(fields: [quizQuestionId], references: [id])
 
   @@map("quiz_attempts")
+}
+
+// A short code a caregiver hands out: `caregiver` lets another family member create an account on
+// this patient; `device` pairs the patient's own phone without typing the patient id.
+model Invite {
+  id        String     @id @default(uuid())
+  code      String     @unique
+  patientId String     @map("patient_id")
+  kind      InviteKind
+  createdBy String     @map("created_by")
+  createdAt DateTime   @default(now()) @map("created_at")
+  expiresAt DateTime   @map("expires_at")
+  usedAt    DateTime?  @map("used_at")
+  usedBy    String?    @map("used_by")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  creator User    @relation("InviteCreator", fields: [createdBy], references: [id])
+
+  @@map("invites")
 }

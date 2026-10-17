@@ -7,7 +7,7 @@ async function login(req, res) {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
-  const user = await prisma.user.findUnique({ where: { email }, include: { patient: true } });
+  const user = await prisma.user.findUnique({ where: { email: String(email).trim().toLowerCase() }, include: { patient: true } });
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
   const valid = await bcrypt.compare(password, user.passwordHash);
@@ -36,6 +36,7 @@ async function registerDeviceHandler(req, res) {
   if (!patient_id || !device_type || !identifier) {
     return res.status(400).json({ error: 'patient_id, device_type, and identifier are required' });
   }
+  if (req.user.patient_id !== patient_id) return res.status(403).json({ error: 'Forbidden for this patient' });
   if (!['esp32cam', 'watch'].includes(device_type)) {
     return res.status(400).json({ error: 'device_type must be esp32cam or watch' });
   }

@@ -11,6 +11,7 @@ const quizRoutes = require('./routes/quiz');
 const recallRoutes = require('./routes/recall');
 const patientRoutes = require('./routes/patients');
 const publicTagRoutes = require('./routes/publicTag');
+const accountRoutes = require('./routes/accounts');
 const path = require('path');
 
 const app = express();
@@ -35,6 +36,7 @@ app.use('/api', quizRoutes);
 app.use('/api', recallRoutes);
 app.use('/api', patientRoutes);
 app.use('/api', publicTagRoutes);
+app.use('/api', accountRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

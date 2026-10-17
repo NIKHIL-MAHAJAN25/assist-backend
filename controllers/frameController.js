@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { analyzeFrame } = require('../services/geminiService');
 const { uploadFrame } = require('../services/cloudinaryService');
+const { decideFor } = require('../services/decisionService');
 
 // Phase 0: single Gemini call, no short-term memory context, no agentic decision layer.
 // agent_decision stays null until Phase 1 wires up the two-step decision layer (ai-prompting-patterns.md §3).
@@ -24,7 +25,9 @@ async function ingestFrame(req, res) {
     },
   });
 
-  res.status(201).json({ log_entry_id: logEntry.id, requires_attention: logEntry.requiresAttention });
+  const decision = await decideFor(logEntry.id);
+  const requiresAttention = decision?.decided_by === 'drex' ? decision.drex.notify || logEntry.requiresAttention : logEntry.requiresAttention;
+  res.status(201).json({ log_entry_id: logEntry.id, requires_attention: requiresAttention });
 }
 
 module.exports = { ingestFrame };
