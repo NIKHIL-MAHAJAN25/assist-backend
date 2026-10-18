@@ -50,11 +50,16 @@ function framePrompt(journalTail) {
 const RANGE_WORDS = { today: 'today so far', morning: 'this morning', week: 'the last seven days' };
 
 function summaryPrompt({ firstName, range, journal }) {
+  const shape = range === 'week'
+    ? `one short paragraph of at most 5 sentences. Do not go day by day: give the overall pattern (meals,
+routine, time out), then only the days that stood out and why. Skip days with nothing recorded in one phrase.`
+    : `3 to 4 sentences: how the ${range === 'morning' ? 'morning' : 'day'} went, meals, time out of the house,
+anything flagged and how it ended.`;
   return `You write short updates for the family of ${firstName}, who lives with memory loss.
-Below is the activity journal for ${RANGE_WORDS[range] || range}. Write a warm, plain summary of
-3 to 5 sentences: how the day went, meals, time out of the house, anything flagged, and how they
-responded. Use "${firstName}", never "the patient". No medical advice. Only use what the journal says;
-if there are long gaps with no entries, say the camera saw nothing then rather than guessing.
+Below is the activity journal for ${RANGE_WORDS[range] || range}. Write ${shape}
+Warm and plain, like a calm message from a carer. Use "${firstName}", never "the patient". Times as
+"around 7:30 am". No medical advice. Only use what the journal says; if there are long gaps with no
+entries, say the camera saw nothing then rather than guessing.
 
 Reply with ONLY the summary text.
 
