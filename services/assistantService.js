@@ -57,6 +57,11 @@ const ACTIONS = {
     shape: '{"type":"quiz"}',
     validate: () => ({ type: 'quiz' }),
   },
+  broadcast: {
+    describe: 'Tell the whole family circle something (e.g. "She\'s fine, I just spoke to her"). Everyone gets it as a notification.',
+    shape: '{"type":"broadcast","text":"…"}',
+    validate: (a) => (typeof a.text === 'string' && a.text.trim() ? { type: 'broadcast', text: a.text.trim().slice(0, 500) } : null),
+  },
   map: {
     describe: 'Show where they are now on a map, with the safe places.',
     shape: '{"type":"map"}',

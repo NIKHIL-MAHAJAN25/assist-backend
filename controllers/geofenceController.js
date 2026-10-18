@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { isInsideAnyZone } = require('../services/geofenceService');
 const { decideFor } = require('../services/decisionService');
+const { isWalkActive } = require('../services/demoService');
 
 const REFLAG_MINUTES = 30;
 
@@ -9,11 +10,18 @@ async function checkGeofence(req, res) {
   if (!device_id || lat === undefined || lng === undefined) {
     return res.status(400).json({ error: 'device_id, lat, and lng are required' });
   }
+  // During a simulated walk (demo kit) the real phone's pings are set aside so the two don't fight.
+  if (isWalkActive(req.device.patientId) && !req.device.identifier.startsWith('demo:')) {
+    return res.status(202).json({ ignored: 'demo walk in progress' });
+  }
+  const r = await recordPing(req.device, Number(lat), Number(lng), timestamp ? new Date(timestamp) : new Date());
+  res.status(201).json(r);
+}
 
-  const device = req.device;
+/** Store one location ping and flag it when they leave (or stay out of) the safe places. */
+async function recordPing(device, lat, lng, at = new Date(), extra = {}) {
   const zones = await prisma.geofenceZone.findMany({ where: { patientId: device.patientId } });
   const insideSafeZone = isInsideAnyZone(lat, lng, zones);
-  const at = timestamp ? new Date(timestamp) : new Date();
 
   // The phone pings every minute. Flag the moment she leaves, then at most one reminder every
   // REFLAG_MINUTES while she stays out — not one alert per ping.
@@ -40,14 +48,14 @@ async function checkGeofence(req, res) {
       deviceId: device.id,
       entryType: 'geofence',
       timestamp: at,
-      payload: { lat, lng, inside_safe_zone: insideSafeZone },
+      payload: { lat, lng, inside_safe_zone: insideSafeZone, ...extra },
       requiresAttention,
     },
   });
 
   // Only ask the decision layer about pings that change something; routine in-zone pings stay rules-only.
   if (requiresAttention) decideFor(logEntry.id);
-  res.status(201).json({ log_entry_id: logEntry.id, inside_safe_zone: insideSafeZone });
+  return { log_entry_id: logEntry.id, inside_safe_zone: insideSafeZone };
 }
 
 async function createZone(req, res) {
@@ -101,4 +109,4 @@ async function deleteZone(req, res) {
   res.status(204).send();
 }
 
-module.exports = { checkGeofence, createZone, listZones, updateZone, deleteZone };
+module.exports = { recordPing, checkGeofence, createZone, listZones, updateZone, deleteZone };

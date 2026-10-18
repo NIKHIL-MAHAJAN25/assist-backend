@@ -31,6 +31,7 @@ services:
       AI_PROVIDER: workers
       WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in deploy/.env}
       JOURNAL_DIR: /app/journal
+      DEMO_MODE: ${DEMO_MODE:-1}
     depends_on:
       assist-db:
         condition: service_healthy

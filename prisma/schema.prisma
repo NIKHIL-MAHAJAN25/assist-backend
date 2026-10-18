@@ -254,3 +254,17 @@ model DeviceCommand {
   @@index([patientId, status])
   @@map("device_commands")
 }
+
+// "Tell the family": a note one family member sends to everyone in the circle (Assistant action).
+// Shows up in every member's notifications (website + family app).
+model FamilyBroadcast {
+  id         String   @id @default(uuid())
+  patientId  String   @map("patient_id")
+  fromUserId String   @map("from_user_id")
+  senderName String   @map("sender_name")
+  text       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([patientId, createdAt])
+  @@map("family_broadcasts")
+}
