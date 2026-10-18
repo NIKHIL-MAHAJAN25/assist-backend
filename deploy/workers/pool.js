@@ -29,6 +29,30 @@ if (TOKEN.length < 16) {
 }
 
 const log = (id, msg) => console.log(`${new Date().toISOString().slice(11, 19)} [${id}] ${msg}`);
+
+// Cool-off per provider: when the CLI itself keeps failing (outage, expired sign-in, quota), all of that
+// provider's helpers stop claiming for a while so the other provider takes the work at full speed.
+// 3 failures in a row → pause 5 min, then 10, 20, … up to 60. One success resets it.
+const health = {
+  claude: { fails: 0, pausedUntil: 0, pauseMin: 5 },
+  codex: { fails: 0, pausedUntil: 0, pauseMin: 5 },
+};
+
+function noteResult(provider, ok) {
+  const h = health[provider];
+  if (ok) {
+    if (h.fails >= 3) log(provider, 'working again');
+    h.fails = 0;
+    h.pauseMin = 5;
+    return;
+  }
+  h.fails += 1;
+  if (h.fails >= 3 && Date.now() >= h.pausedUntil) {
+    h.pausedUntil = Date.now() + h.pauseMin * 60000;
+    log(provider, `failing repeatedly — pausing all ${provider} helpers for ${h.pauseMin} min (check sign-in / subscription)`);
+    h.pauseMin = Math.min(h.pauseMin * 2, 60);
+  }
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(pathname, body) {
@@ -93,6 +117,11 @@ async function helper(provider, n) {
   let backoff = 1000;
 
   for (;;) {
+    const wait = health[provider].pausedUntil - Date.now();
+    if (wait > 0) {
+      await sleep(Math.min(wait, 60000));
+      continue;
+    }
     let job;
     try {
       job = await api('/internal/jobs/claim', { provider, worker_id: id });
@@ -110,9 +139,11 @@ async function helper(provider, n) {
     try {
       const output = await ask(provider, job, dir);
       result = { ok: true, output };
+      noteResult(provider, true);
       log(id, `${job.kind} ${job.id.slice(0, 8)} answered in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     } catch (e) {
       result = { ok: false, error: e.message };
+      noteResult(provider, false);
       log(id, `${job.kind} ${job.id.slice(0, 8)} failed: ${e.message}`);
     } finally {
       for (const f of ['photo.jpg', 'answer.txt']) fs.rmSync(path.join(dir, f), { force: true });
