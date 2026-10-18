@@ -31,7 +31,8 @@ function renderLines(entries, attempts) {
     const decided = p.decision?.drex && !p.decision.drex.error ? ` (rules ${p.decision.rules?.notify ? '✓' : '✗'}, Drex ${p.decision.drex.notify ? '✓' : '✗'})` : '';
 
     if (e.entryType === 'frame') {
-      const key = p.activity_key || p.activity;
+      const quiet = p.activity_key === 'empty_room' || p.activity_key === 'not_visible';
+      const key = quiet ? 'quiet' : p.activity_key || p.activity;
       const prev = items[items.length - 1];
       if (prev && prev.kind === 'frame' && prev.key === key && !e.requiresAttention && t - prev.end <= MERGE_GAP_MIN * 60000) {
         prev.end = t;
@@ -39,7 +40,9 @@ function renderLines(entries, attempts) {
       }
       items.push({
         kind: 'frame', key, start: t, end: t,
-        text: `${flag}Camera · ${p.activity || 'activity'}${p.person_state && p.person_state !== 'not visible' ? ` (${p.person_state})` : ''}${flag ? decided : ''}`,
+        text: quiet
+          ? 'Camera · no one in view'
+          : `${flag}Camera · ${p.activity || 'activity'}${p.person_state && p.person_state !== 'not visible' ? ` (${p.person_state})` : ''}${flag ? decided : ''}`,
       });
     } else if (e.entryType === 'geofence') {
       const inside = p.inside_safe_zone !== false;

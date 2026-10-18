@@ -31,7 +31,11 @@ memory loss. Look at ONE still photo from their home camera and describe it for 
 Rules:
 - "activity_key" MUST be exactly one of: ${Object.keys(ACTIVITIES).join(', ')}.
   Meanings: ${Object.entries(ACTIVITIES).map(([k, v]) => `${k} = ${v}`).join('; ')}.
-- "activity" is a short plain phrase a family member would say (max 8 words), e.g. "eating breakfast at the table".
+- "activity" is what the PERSON is doing, as a family member would say it (max 8 words), e.g.
+  "eating breakfast at the table", "dozing in the armchair". Never describe the camera, the photo
+  quality or the furniture. If nobody is there use empty_room; if the view is blurred, too close or
+  blocked use not_visible — in both cases "activity" is just "no one in view".
+- A face right up against the camera is not an activity worth describing: use not_visible.
 - "person_state" is posture and mood in a few words, or "not visible".
 - "objects_of_note": up to 4 notable objects.
 - "confidence": 0 to 1.
