@@ -12,6 +12,7 @@ const recallRoutes = require('./routes/recall');
 const patientRoutes = require('./routes/patients');
 const publicTagRoutes = require('./routes/publicTag');
 const accountRoutes = require('./routes/accounts');
+const internalRoutes = require('./routes/internal');
 const path = require('path');
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api', recallRoutes);
 app.use('/api', patientRoutes);
 app.use('/api', publicTagRoutes);
 app.use('/api', accountRoutes);
+app.use('/internal', internalRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

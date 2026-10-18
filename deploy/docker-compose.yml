@@ -27,6 +27,10 @@ services:
     environment:
       DATABASE_URL: postgresql://assist_app:${POSTGRES_PASSWORD}@assist-db:5432/assistdb
       PORT: "3000"
+      TZ: Asia/Kolkata
+      AI_PROVIDER: workers
+      WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in deploy/.env}
+      JOURNAL_DIR: /app/journal
     depends_on:
       assist-db:
         condition: service_healthy

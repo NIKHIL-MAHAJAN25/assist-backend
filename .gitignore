@@ -4,3 +4,4 @@ node_modules/
 server.log
 server.err.log
 deploy/.env
+journal/

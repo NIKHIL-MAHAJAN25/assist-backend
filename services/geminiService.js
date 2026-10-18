@@ -139,4 +139,36 @@ ${groundingText}`;
   return response.text.trim();
 }
 
-module.exports = { analyzeFrame, generateQuizQuestions, clarifyTranscript, answerRecallQuery };
+// Fallback for the helper queue: same prompt the helpers get (services/prompts.js), thinking off so a
+// frame answers in a couple of seconds, one retry on a rate limit.
+async function withRetry(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (String(e?.status || e?.message).includes('429')) {
+      await new Promise((r) => setTimeout(r, 4000));
+      return fn();
+    }
+    throw e;
+  }
+}
+
+async function analyzeFrameWithPrompt({ base64Image, prompt, mimeType = 'image/jpeg' }) {
+  const response = await withRetry(() => genAI.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType, data: base64Image } }] }],
+    config: { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } },
+  }));
+  return response.text;
+}
+
+async function generateText(prompt) {
+  const response = await withRetry(() => genAI.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    config: { thinkingConfig: { thinkingBudget: 0 } },
+  }));
+  return response.text.trim();
+}
+
+module.exports = { analyzeFrame, generateQuizQuestions, clarifyTranscript, answerRecallQuery, analyzeFrameWithPrompt, generateText };

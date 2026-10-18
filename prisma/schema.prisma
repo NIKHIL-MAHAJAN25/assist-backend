@@ -212,3 +212,25 @@ model Invite {
 
   @@map("invites")
 }
+
+// Work for the AI helpers (frame analysis, summaries). Helpers on the host claim jobs over the
+// internal API; anything not picked up or failed falls back to Gemini inside the backend.
+model AiJob {
+  id            String    @id @default(uuid())
+  kind          String    // frame | summary
+  status        String    @default("queued") // queued | running | done | failed | dropped
+  patientId     String    @map("patient_id")
+  payload       Json
+  result        Json?
+  error         String?
+  attempts      Int       @default(0)
+  avoidProvider String?   @map("avoid_provider")
+  provider      String?
+  workerId      String?   @map("worker_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  startedAt     DateTime? @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+
+  @@index([status, createdAt])
+  @@map("ai_jobs")
+}

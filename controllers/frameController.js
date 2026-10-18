@@ -1,33 +1,14 @@
-const prisma = require('../config/prisma');
-const { analyzeFrame } = require('../services/geminiService');
-const { uploadFrame } = require('../services/cloudinaryService');
-const { decideFor } = require('../services/decisionService');
+const { enqueueFrame } = require('../services/jobQueue');
 
-// Phase 0: single Gemini call, no short-term memory context, no agentic decision layer.
-// agent_decision stays null until Phase 1 wires up the two-step decision layer (ai-prompting-patterns.md §3).
+// A photo goes on the helper queue and the phone gets an answer at once (the phone ignores the body).
+// The log entry, decision and journal line are written when a helper — or the Gemini fallback — answers.
+// Response keeps the old shape for the app: log_entry_id carries the job id until the entry exists.
 async function ingestFrame(req, res) {
   const { device_id, image, captured_at } = req.body;
   if (!device_id || !image) return res.status(400).json({ error: 'device_id and image are required' });
 
-  const device = req.device;
-  const analysis = await analyzeFrame({ base64Image: image });
-  const imagePublicId = await uploadFrame(image);
-
-  const logEntry = await prisma.logEntry.create({
-    data: {
-      patientId: device.patientId,
-      deviceId: device.id,
-      entryType: 'frame',
-      timestamp: captured_at ? new Date(captured_at) : new Date(),
-      payload: analysis,
-      requiresAttention: analysis.requires_attention,
-      imagePublicId,
-    },
-  });
-
-  const decision = await decideFor(logEntry.id);
-  const requiresAttention = decision?.decided_by === 'drex' ? decision.drex.notify || logEntry.requiresAttention : logEntry.requiresAttention;
-  res.status(201).json({ log_entry_id: logEntry.id, requires_attention: requiresAttention });
+  const job = await enqueueFrame({ device: req.device, image, capturedAt: captured_at ? new Date(captured_at) : new Date() });
+  res.status(202).json({ log_entry_id: job.id, requires_attention: false, queued: true });
 }
 
 module.exports = { ingestFrame };

@@ -1,0 +1,24 @@
+# systemd unit for the Assist helper pool. Install (as ubuntu):
+#   sudo cp ~/assist/backend/deploy/workers/assist-helpers.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now assist-helpers
+# Logs:  journalctl -u assist-helpers -f
+[Unit]
+Description=Assist AI helpers (4 Claude + 4 Codex)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=assist
+WorkingDirectory=/home/assist/helpers
+EnvironmentFile=/home/assist/.config/assist/workers.env
+# run.sh loads nvm (Node, claude and codex live in the assist user's nvm).
+ExecStart=/bin/bash /home/assist/helpers/run.sh
+Restart=always
+RestartSec=5
+# Keep the helpers in their lane.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
