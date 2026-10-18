@@ -24,13 +24,13 @@ let lastGeminiFrame = 0;
 
 // ---- enqueue --------------------------------------------------------------------------------
 
-async function enqueueFrame({ device, image, capturedAt }) {
+async function enqueueFrame({ device, image, capturedAt, commandId }) {
   const tail = await journal.tail(device.patientId, 10).catch(() => []);
   const job = await prisma.aiJob.create({
     data: {
       kind: 'frame',
       patientId: device.patientId,
-      payload: { device_id: device.id, captured_at: capturedAt.toISOString(), image, prompt: framePrompt(tail) },
+      payload: { device_id: device.id, captured_at: capturedAt.toISOString(), image, prompt: framePrompt(tail), ...(commandId && { command_id: commandId }) },
     },
   });
   // Upload in the background; a Cloudinary failure must never lose the moment itself.
@@ -61,7 +61,7 @@ async function claim(provider, workerId) {
     WHERE id = (
       SELECT id FROM ai_jobs
       WHERE status = 'queued' AND (avoid_provider IS NULL OR avoid_provider <> ${provider})
-      ORDER BY (kind <> 'frame') DESC, created_at DESC
+      ORDER BY (kind <> 'frame') DESC, (payload->>'command_id') IS NOT NULL DESC, created_at DESC
       LIMIT 1 FOR UPDATE SKIP LOCKED)
     RETURNING id, kind, payload`;
   if (!rows.length) return null;
@@ -124,6 +124,16 @@ async function finishFrame(job, value, { provider, ms }) {
   });
   decideFor(entry.id);
   journal.writeDay(job.patientId).catch((e) => console.error('[journal]', e.message));
+  if (job.payload.command_id) {
+    // "Take a photo now" from the Assistant: hand the result back to the family's card.
+    const cmd = await prisma.deviceCommand.findUnique({ where: { id: job.payload.command_id } });
+    if (cmd) {
+      await prisma.deviceCommand.update({
+        where: { id: cmd.id },
+        data: { status: 'done', doneAt: new Date(), payload: { ...cmd.payload, log_entry_id: entry.id, image_public_id: imagePublicId, activity: value.activity, person_state: value.person_state, objects: value.objects_of_note } },
+      });
+    }
+  }
   return entry;
 }
 
@@ -148,7 +158,7 @@ async function runFallback(jobId) {
   try {
     if (!process.env.GEMINI_API_KEY) throw new Error('no GEMINI_API_KEY for fallback');
     if (job.kind === 'frame') {
-      if (Date.now() - lastGeminiFrame < GEMINI_FRAME_GAP_MS) {
+      if (!job.payload.command_id && Date.now() - lastGeminiFrame < GEMINI_FRAME_GAP_MS) {
         await drop(job, 'gemini throttle');
         return;
       }
@@ -181,7 +191,7 @@ async function sweep() {
   const queued = await prisma.aiJob.findMany({ where: { status: 'queued' }, select: { id: true, kind: true, createdAt: true, payload: true } });
   for (const j of queued) {
     const age = (now - j.createdAt.getTime()) / 1000;
-    if (j.kind === 'frame' && age > FRAME_STALE_S) await drop(j, 'stale');
+    if (j.kind === 'frame' && age > FRAME_STALE_S && !j.payload.command_id) await drop(j, 'stale');
     else if (age > FALLBACK_AFTER_S[j.kind]) await runFallback(j.id);
   }
   // A helper that died mid-job: give the job back (or to Gemini).

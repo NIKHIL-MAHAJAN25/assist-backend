@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const journal = require('./journalService');
 const { getPatientStatus } = require('./patientStatusService');
+const { describe } = require('./commandTypes');
 
 // The family Assistant: a grounded agent that answers from what the system knows and PROPOSES
 // actions. It never acts on the patient by itself — anything that reaches the patient (speaking on
@@ -16,6 +17,45 @@ const ACTIONS = {
       'to someone with memory loss: short, warm, one idea, their first name, no questions that need memory.',
     shape: '{"type":"speak","text":"…"}',
     validate: (a) => (typeof a.text === 'string' && a.text.trim() ? { type: 'speak', text: a.text.trim().slice(0, 280) } : null),
+  },
+  ask: {
+    describe: 'Ask the patient a simple question on their phone (spoken aloud, with tap-to-answer buttons); ' +
+      'their answer comes back here. Yes/no or one-word questions work best.',
+    shape: '{"type":"ask","question":"…","quick":["Yes","No","Not yet"]}',
+    validate: (a) => (typeof a.question === 'string' && a.question.trim()
+      ? { type: 'ask', question: a.question.trim().slice(0, 200), quick: Array.isArray(a.quick) ? a.quick.slice(0, 3).map((q) => String(q).slice(0, 24)) : ['Yes', 'No', 'Not yet'] }
+      : null),
+  },
+  reminder: {
+    describe: 'Set a one-off reminder on the patient\'s phone at a time today (spoken and shown).',
+    shape: '{"type":"reminder","text":"Drink a glass of water","at":"16:00"}',
+    validate: (a) => (typeof a.text === 'string' && /^\d{1,2}:\d{2}$/.test(String(a.at || '')) ? { type: 'reminder', text: a.text.trim().slice(0, 140), at: a.at } : null),
+  },
+  capture: {
+    describe: 'Take a fresh photo from the home camera right now and describe it.',
+    shape: '{"type":"capture"}',
+    validate: () => ({ type: 'capture' }),
+  },
+  ring: {
+    describe: 'Make the patient\'s phone ring loudly for 20 seconds (when they can\'t find it or aren\'t answering).',
+    shape: '{"type":"ring"}',
+    validate: () => ({ type: 'ring' }),
+  },
+  guide_home: {
+    describe: 'When they are outside the safe places: tell them gently to head home, open the way-home arrow on ' +
+      'their phone, and send their location more often for 15 minutes.',
+    shape: '{"type":"guide_home"}',
+    validate: () => ({ type: 'guide_home' }),
+  },
+  calm: {
+    describe: 'Calm-down: a slow, reassuring spoken breathing moment on their phone (plus the family\'s latest voice note).',
+    shape: '{"type":"calm"}',
+    validate: () => ({ type: 'calm' }),
+  },
+  quiz: {
+    describe: 'Send today\'s short memory quiz to their phone now.',
+    shape: '{"type":"quiz"}',
+    validate: () => ({ type: 'quiz' }),
   },
   map: {
     describe: 'Show where they are now on a map, with the safe places.',
@@ -61,7 +101,7 @@ async function gatherContext(patient) {
     `Unacknowledged alerts: ${status.needs_attention_count}`,
     `Safe places: ${zones.map((z) => z.name).join(', ') || 'none set up'}`,
     `Memory quiz today: ${status.today.quiz_total ? `${status.today.quiz_correct} of ${status.today.quiz_total} right` : 'not taken yet'}`,
-    `Messages recently sent to their phone: ${commands.length ? commands.map((c) => `"${c.payload.text}" (${c.status}, ${ago(c.createdAt)}, by ${c.senderName})`).join('; ') : 'none'}`,
+    `Recent actions on their phone: ${commands.length ? commands.map((c) => `${describe(c)} (${c.status}, ${ago(c.createdAt)}, by ${c.senderName})`).join('; ') : 'none'}`,
   ];
   return {
     text: `${lines.join('\n')}\n\nToday's journal (oldest first):\n${journalText.trim() || '(empty)'}`,
@@ -104,7 +144,7 @@ function parseAnswer(raw) {
       const actions = (Array.isArray(v.actions) ? v.actions : [])
         .map((a) => (a && ACTIONS[a.type] ? ACTIONS[a.type].validate(a) : null))
         .filter(Boolean)
-        .slice(0, 3);
+        .slice(0, 4);
       if (typeof v.reply === 'string') return { reply: v.reply.trim(), actions };
     } catch { /* fall through */ }
   }

@@ -4,10 +4,10 @@ const { enqueueFrame } = require('../services/jobQueue');
 // The log entry, decision and journal line are written when a helper — or the Gemini fallback — answers.
 // Response keeps the old shape for the app: log_entry_id carries the job id until the entry exists.
 async function ingestFrame(req, res) {
-  const { device_id, image, captured_at } = req.body;
+  const { device_id, image, captured_at, command_id } = req.body;
   if (!device_id || !image) return res.status(400).json({ error: 'device_id and image are required' });
 
-  const job = await enqueueFrame({ device: req.device, image, capturedAt: captured_at ? new Date(captured_at) : new Date() });
+  const job = await enqueueFrame({ device: req.device, image, capturedAt: captured_at ? new Date(captured_at) : new Date(), commandId: command_id || null });
   res.status(202).json({ log_entry_id: job.id, requires_attention: false, queued: true });
 }
 

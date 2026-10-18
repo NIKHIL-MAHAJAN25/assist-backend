@@ -24,6 +24,7 @@ router.get('/patients/:id/journal', ...family, getJournal);
 router.post('/patients/:id/assistant', ...family, assistant.ask);
 router.get('/patients/:id/commands', ...family, assistant.listCommands);
 router.post('/patients/:id/commands', ...family, assistant.createCommand);
+router.post('/patients/:id/voice-notes', ...family, assistant.uploadVoiceNote);
 router.get('/devices/commands', requireDeviceAuth, assistant.pullCommands);
 router.post('/devices/commands/:cid/ack', requireDeviceAuth, assistant.ackCommand);
 

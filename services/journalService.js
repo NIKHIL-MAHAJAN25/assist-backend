@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const prisma = require('../config/prisma');
+const { describe } = require('./commandTypes');
 
 // The day journal: one Markdown file per patient per day, rendered from the database (the source of
 // truth) by the backend alone, so concurrent helpers never write to it. Helpers read its tail for
@@ -20,7 +21,7 @@ function fileFor(patientId, day) {
 }
 
 // Turn the day's raw entries into readable, merged lines.
-function renderLines(entries, attempts) {
+function renderLines(entries, attempts, commands = []) {
   const items = [];
   let lastInside = null;
 
@@ -85,6 +86,14 @@ function renderLines(entries, attempts) {
     for (const g of byTime.values()) items.push({ kind: 'quiz', start: g.start, end: g.start, text: `Memory quiz · ${g.right} of ${g.total} right` });
   }
 
+  for (const c of commands) {
+    if (['expired'].includes(c.status)) continue;
+    items.push({ kind: 'family', start: new Date(c.createdAt), end: new Date(c.createdAt), text: `${c.senderName} → phone · ${describe(c)}` });
+    if (c.type === 'ask' && c.payload?.reply && c.payload.replied_at) {
+      items.push({ kind: 'reply', start: new Date(c.payload.replied_at), end: new Date(c.payload.replied_at), text: `Answered ${c.senderName}: "${c.payload.reply}"` });
+    }
+  }
+
   items.sort((a, b) => a.start - b.start);
   return items.map((i) => {
     const span = i.end - i.start >= 60000 ? `${hm(i.start)}–${hm(i.end)}` : hm(i.start);
@@ -95,11 +104,12 @@ function renderLines(entries, attempts) {
 async function linesFor(patientId, day = new Date()) {
   const from = dayStart(day);
   const to = new Date(from.getTime() + 86400000);
-  const [entries, attempts] = await Promise.all([
+  const [entries, attempts, commands] = await Promise.all([
     prisma.logEntry.findMany({ where: { patientId, timestamp: { gte: from, lt: to } }, orderBy: { timestamp: 'asc' } }),
     prisma.quizAttempt.findMany({ where: { timestamp: { gte: from, lt: to }, quizQuestion: { patientId } }, orderBy: { timestamp: 'asc' } }),
+    prisma.deviceCommand.findMany({ where: { patientId, createdAt: { gte: from, lt: to } }, orderBy: { createdAt: 'asc' } }),
   ]);
-  return renderLines(entries, attempts);
+  return renderLines(entries, attempts, commands);
 }
 
 // Re-render one day's file. Cheap: a day is at most a few hundred entries.
@@ -140,6 +150,12 @@ async function refreshChanged() {
     select: { patientId: true },
     distinct: ['patientId'],
   });
+  const commanded = await prisma.deviceCommand.findMany({
+    where: { OR: [{ createdAt: { gte: since } }, { doneAt: { gte: since } }] },
+    select: { patientId: true },
+    distinct: ['patientId'],
+  });
+  for (const c of commanded) if (!changed.some((x) => x.patientId === c.patientId)) changed.push(c);
   for (const { patientId } of changed) await writeDay(patientId).catch((e) => console.error('[journal]', e.message));
 }
 
