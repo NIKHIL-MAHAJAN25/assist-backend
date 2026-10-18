@@ -24,14 +24,16 @@ async function start(patientId, { logEntryId = null, reason = 'The camera saw a 
     reason,
     log_entry_id: logEntryId,
   };
+  const voice = require('./voiceService');
   const [cmd] = await prisma.$transaction([
     prisma.deviceCommand.create({
-      data: { patientId, type: 'ask', payload, createdBy: 'system', senderName: 'Assist', expiresAt: new Date(Date.now() + 10 * 60000) },
+      data: { patientId, type: 'ask', payload: voice.wantsVoice('ask') ? { ...payload, voice_pending: true } : payload, createdBy: 'system', senderName: 'Assist', expiresAt: new Date(Date.now() + 10 * 60000) },
     }),
     prisma.familyEvent.create({
       data: { patientId, kind: 'fall_check', severity: 'act', title: `Possible fall — checking with ${first}`, body: `${reason}. Her phone is asking "are you okay?"; you'll hear back within 2 minutes.`, refId: logEntryId },
     }),
   ]);
+  voice.prepareCommand(cmd); // pre-generated at startup, so this is a cache hit
   return cmd;
 }
 

@@ -3,6 +3,7 @@ const { gatherContext, buildPrompt, parseAnswer } = require('../services/assista
 const { enqueueAgent, waitFor } = require('../services/jobQueue');
 const { TYPES } = require('../services/commandTypes');
 const fallCheck = require('../services/fallCheck');
+const voice = require('../services/voiceService');
 const story = require('../services/storyService');
 const rules = require('../services/ruleEngine');
 const cloudinary = require('../config/cloudinary');
@@ -63,12 +64,13 @@ async function createCommand(req, res) {
     data: {
       patientId: req.params.id,
       type,
-      payload,
+      payload: voice.wantsVoice(type) ? { ...payload, voice_pending: true } : payload,
       createdBy: req.user.sub,
       senderName: (user?.name || 'Family').split(' ')[0],
       expiresAt: new Date(Date.now() + COMMAND_TTL_MIN * 60000),
     },
   });
+  if (voice.wantsVoice(type)) voice.prepareCommand(cmd); // natural voice, ready in a few seconds
   res.status(201).json(publicCommand(cmd));
 }
 
@@ -84,7 +86,9 @@ async function listCommands(req, res) {
 async function pullCommands(req, res) {
   const patientId = req.device.patientId;
   await expireOld(patientId);
-  const pending = await prisma.deviceCommand.findMany({ where: { patientId, status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 5 });
+  const pending = (await prisma.deviceCommand.findMany({ where: { patientId, status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 8 }))
+    .filter((c) => !c.payload?.voice_pending || c.createdAt.getTime() < Date.now() - voice.holdFor(c.type) - 2000)
+    .slice(0, 5);
   if (pending.length) {
     await prisma.deviceCommand.updateMany({ where: { id: { in: pending.map((c) => c.id) }, status: 'pending' }, data: { status: 'delivered', deliveredAt: new Date() } });
   }

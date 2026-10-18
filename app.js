@@ -28,6 +28,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 // The page an NFC sticker opens. Short path so the URL fits small tags: /t/<code>.
 app.get('/t/:code', (req, res) => res.sendFile(path.join(__dirname, 'public', 'tag.html')));
 
+// Natural-voice audio for the patient's phone (services/voiceService.js). Unguessable hashed names.
+app.use('/tts', express.static(require('./services/voiceService').AUDIO_DIR, { maxAge: '30d', immutable: true }));
+
 app.use('/api', authRoutes);
 app.use('/api', ingestionRoutes);
 app.use('/api', logEntryRoutes);

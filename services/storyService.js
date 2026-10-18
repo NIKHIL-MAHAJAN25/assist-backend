@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const journal = require('./journalService');
 const { enqueueStory, waitFor } = require('./jobQueue');
+const voice = require('./voiceService');
 
 // Bedtime "your day" story (#18): a few warm sentences about the patient's own day, written TO them
 // ("Today you…") from the journal by a helper, sent to their phone to be read aloud and kept on screen.
@@ -31,12 +32,13 @@ async function sendStory(patientId, { senderName = 'Assist', createdBy = 'system
   const story = done.result.text.replace(/^["“]|["”]$/g, '').trim().slice(0, 1500);
   const [cmd] = await prisma.$transaction([
     prisma.deviceCommand.create({
-      data: { patientId, type: 'story', payload: { text: story, title: 'Your day' }, createdBy, senderName, expiresAt: new Date(Date.now() + 30 * 60000) },
+      data: { patientId, type: 'story', payload: { text: story, title: 'Your day', ...(voice.wantsVoice('story') && { voice_pending: true }) }, createdBy, senderName, expiresAt: new Date(Date.now() + 30 * 60000) },
     }),
     prisma.familyEvent.create({
       data: { patientId, kind: 'story', severity: 'info', title: `Bedtime story sent to ${first}`, body: story.length > 160 ? `${story.slice(0, 157)}…` : story },
     }),
   ]);
+  voice.prepareCommand(cmd);
   return { text: story, provider: done.result.provider, command_id: cmd.id };
 }
 
