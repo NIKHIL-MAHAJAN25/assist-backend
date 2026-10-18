@@ -3,6 +3,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const a = require('../controllers/accountController');
 const { listDecisions } = require('../controllers/decisionController');
 const { getSummary, getJournal } = require('../controllers/summaryController');
+const assistant = require('../controllers/assistantController');
+const { requireDeviceAuth } = require('../middleware/auth');
 
 const router = express.Router();
 const family = [requireAuth, requireRole('family_caregiver')];
@@ -19,5 +21,10 @@ router.delete('/patients/:id/invites/:code', ...family, a.revokeInvite);
 router.get('/patients/:id/decisions', ...family, listDecisions);
 router.get('/patients/:id/summary', ...family, getSummary);
 router.get('/patients/:id/journal', ...family, getJournal);
+router.post('/patients/:id/assistant', ...family, assistant.ask);
+router.get('/patients/:id/commands', ...family, assistant.listCommands);
+router.post('/patients/:id/commands', ...family, assistant.createCommand);
+router.get('/devices/commands', requireDeviceAuth, assistant.pullCommands);
+router.post('/devices/commands/:cid/ack', requireDeviceAuth, assistant.ackCommand);
 
 module.exports = router;

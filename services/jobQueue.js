@@ -14,7 +14,7 @@ const { decideFor } = require('./decisionService');
 // once on the other provider, then Gemini. Stale frames are dropped: the family wants now, not a backlog.
 
 const MODE = () => (process.env.AI_PROVIDER || 'gemini').toLowerCase();
-const FALLBACK_AFTER_S = { frame: 20, summary: 25 };
+const FALLBACK_AFTER_S = { frame: 20, summary: 25, agent: 15 };
 const FRAME_STALE_S = 90;
 const RUNNING_TIMEOUT_S = 120;
 const GEMINI_FRAME_GAP_MS = 10000;
@@ -39,6 +39,13 @@ async function enqueueFrame({ device, image, capturedAt }) {
   return job;
 }
 
+// The family Assistant: a person is waiting, so it jumps the queue like a summary.
+async function enqueueAgent({ patientId, prompt }) {
+  const job = await prisma.aiJob.create({ data: { kind: 'agent', patientId, payload: { prompt } } });
+  if (MODE() !== 'workers') runFallback(job.id).catch((e) => console.error('[gemini]', e.message));
+  return job;
+}
+
 async function enqueueSummary({ patientId, prompt, cacheKey }) {
   const job = await prisma.aiJob.create({ data: { kind: 'summary', patientId, payload: { prompt, cache_key: cacheKey } } });
   if (MODE() !== 'workers') runFallback(job.id).catch((e) => console.error('[gemini]', e.message));
@@ -54,7 +61,7 @@ async function claim(provider, workerId) {
     WHERE id = (
       SELECT id FROM ai_jobs
       WHERE status = 'queued' AND (avoid_provider IS NULL OR avoid_provider <> ${provider})
-      ORDER BY (kind = 'summary') DESC, created_at DESC
+      ORDER BY (kind <> 'frame') DESC, created_at DESC
       LIMIT 1 FOR UPDATE SKIP LOCKED)
     RETURNING id, kind, payload`;
   if (!rows.length) return null;
@@ -81,9 +88,9 @@ async function complete(jobId, workerId, { ok, output, error, ms }) {
       return { accepted: true };
     }
     error = v.error;
-  } else if (ok && job.kind === 'summary') {
+  } else if (ok && job.kind !== 'frame') {
     const text = String(output || '').trim();
-    if (text.length > 20) {
+    if (text.length > (job.kind === 'agent' ? 2 : 20)) {
       await prisma.aiJob.update({ where: { id: job.id }, data: { status: 'done', result: { text, provider: job.provider, ms }, finishedAt: new Date() } });
       return { accepted: true };
     }
@@ -207,4 +214,4 @@ function start() {
   setInterval(tick, 3000).unref();
 }
 
-module.exports = { start, enqueueFrame, enqueueSummary, claim, release, complete, waitFor, stats, MODE };
+module.exports = { start, enqueueFrame, enqueueSummary, enqueueAgent, claim, release, complete, waitFor, stats, MODE };

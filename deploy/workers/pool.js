@@ -20,7 +20,7 @@ const path = require('path');
 const API = (process.env.ASSIST_API || 'http://127.0.0.1:3100').replace(/\/$/, '');
 const TOKEN = process.env.WORKER_TOKEN || '';
 const COUNTS = { claude: Number(process.env.CLAUDE_WORKERS ?? 4), codex: Number(process.env.CODEX_WORKERS ?? 4) };
-const TIMEOUT_MS = { frame: 75000, summary: 120000 };
+const TIMEOUT_MS = { frame: 75000, summary: 120000, agent: 60000 };
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), 'assist-workers-'));
 
 if (TOKEN.length < 16) {
@@ -97,7 +97,7 @@ async function ask(provider, job, dir) {
   if (provider === 'claude') {
     if (imagePath) prompt = `First look at the photo at ${imagePath} (use the Read tool), then answer.\n\n${prompt}`;
     args.push('-p', prompt, '--model', process.env.CLAUDE_MODEL || 'sonnet', '--output-format', 'text', '--allowedTools', 'Read');
-    return run('claude', args, { timeoutMs: TIMEOUT_MS[job.kind], cwd: dir });
+    return run('claude', args, { timeoutMs: TIMEOUT_MS[job.kind] || 90000, cwd: dir });
   }
 
   // codex: read-only sandbox, final message written to a file so banners/logs never mix in.
@@ -105,7 +105,7 @@ async function ask(provider, job, dir) {
   args.push('exec', '--skip-git-repo-check', '--sandbox', 'read-only', '--output-last-message', outFile);
   if (imagePath) args.push('--image', imagePath);
   args.push(prompt);
-  await run('codex', args, { timeoutMs: TIMEOUT_MS[job.kind], cwd: dir });
+  await run('codex', args, { timeoutMs: TIMEOUT_MS[job.kind] || 90000, cwd: dir });
   return fs.readFileSync(outFile, 'utf8');
 }
 

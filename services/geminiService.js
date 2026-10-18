@@ -145,8 +145,9 @@ async function withRetry(fn) {
   try {
     return await fn();
   } catch (e) {
-    if (String(e?.status || e?.message).includes('429')) {
-      await new Promise((r) => setTimeout(r, 4000));
+    // 429 = slow down, 503 = Gemini overloaded: both pass quickly, so wait once and try again.
+    if (/429|503|UNAVAILABLE|RESOURCE_EXHAUSTED/.test(String(e?.status) + String(e?.message))) {
+      await new Promise((r) => setTimeout(r, 3000));
       return fn();
     }
     throw e;

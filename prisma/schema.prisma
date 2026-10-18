@@ -234,3 +234,23 @@ model AiJob {
   @@index([status, createdAt])
   @@map("ai_jobs")
 }
+
+// Actions the family sends to the patient's phone (from the Assistant tab). The phone polls for
+// pending ones, carries them out (e.g. speaks a message aloud) and reports back.
+model DeviceCommand {
+  id          String    @id @default(uuid())
+  patientId   String    @map("patient_id")
+  type        String    // speak
+  payload     Json
+  status      String    @default("pending") // pending | delivered | done | failed | expired
+  createdBy   String    @map("created_by")
+  senderName  String    @map("sender_name")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deliveredAt DateTime? @map("delivered_at")
+  doneAt      DateTime? @map("done_at")
+  expiresAt   DateTime  @map("expires_at")
+  error       String?
+
+  @@index([patientId, status])
+  @@map("device_commands")
+}
