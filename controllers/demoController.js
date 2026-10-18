@@ -83,6 +83,7 @@ async function answer(req, res) {
   const cmd = await prisma.deviceCommand.findFirst({ where: { patientId: req.params.id, type: 'ask', status: { in: ['pending', 'delivered'] } }, orderBy: { createdAt: 'desc' } });
   if (!cmd) return res.status(404).json({ error: 'No question is waiting for an answer' });
   const reply = String(req.body?.reply || '').trim().slice(0, 300) || 'Yes';
+  if (cmd.payload?.fall_check) await require('../services/fallCheck').answered(cmd, reply).catch(() => {});
   await prisma.deviceCommand.update({
     where: { id: cmd.id },
     data: { status: 'done', doneAt: new Date(), deliveredAt: cmd.deliveredAt || new Date(), payload: { ...cmd.payload, reply, replied_at: new Date().toISOString() } },
@@ -98,4 +99,26 @@ async function reset(req, res) {
   res.json(r);
 }
 
-module.exports = { state, saveScene, playScene, walk, answer, reset };
+// POST /api/demo/:id/tick — run the scheduler now (rules, fall checks, bedtime) instead of waiting 30 s
+async function tick(req, res) {
+  if (!guard(req, res)) return;
+  res.json(await require('../services/scheduler').tick());
+}
+
+// POST /api/demo/:id/fall — a fall seen by the camera, without staging one (no photo)
+async function fall(req, res) {
+  if (!guard(req, res)) return;
+  const camera = await demo.demoDevice(req.params.id, 'camera');
+  const entry = await prisma.logEntry.create({
+    data: {
+      patientId: req.params.id, deviceId: camera.id, entryType: 'frame', timestamp: new Date(), requiresAttention: true,
+      payload: { activity_key: 'fallen', activity: 'on the floor, may have fallen', person_state: 'lying on the floor', objects_of_note: [], confidence: 0.8, requires_attention: true, analysed_by: 'demo', demo: true },
+    },
+  });
+  require('../services/decisionService').decideFor(entry.id);
+  const cmd = await require('../services/fallCheck').start(req.params.id, { logEntryId: entry.id, reason: 'The camera saw a possible fall (simulated)' });
+  await journal.writeDay(req.params.id).catch(() => {});
+  res.json({ log_entry_id: entry.id, fall_check: cmd ? cmd.id : 'already running' });
+}
+
+module.exports = { state, saveScene, playScene, walk, answer, reset, tick, fall };

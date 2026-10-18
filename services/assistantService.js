@@ -57,6 +57,21 @@ const ACTIONS = {
     shape: '{"type":"quiz"}',
     validate: () => ({ type: 'quiz' }),
   },
+  rule: {
+    describe: 'Set up a "tell me when…" watch the system checks on its own and notifies the family about. ' +
+      'Use for requests like "tell me when she gets home", "let me know if she hasn\'t eaten by 2", "warn me if she\'s still in bed at 9". ' +
+      'Kinds:\n' + require('./ruleEngine').describeKinds() + '\n  repeat: "once" (default) or "daily".',
+    shape: '{"type":"rule","kind":"arrives_home","params":{},"repeat":"once"}',
+    validate: (a) => {
+      const c = require('./ruleEngine').cleanRule({ kind: a.kind, params: a.params || {}, repeat: a.repeat }, 'them');
+      return c ? { type: 'rule', kind: c.kind, params: c.params, repeat: c.repeat } : null;
+    },
+  },
+  story: {
+    describe: 'Write and send a short, warm "your day" story to the patient\'s phone now (read aloud), e.g. at bedtime.',
+    shape: '{"type":"story"}',
+    validate: () => ({ type: 'story' }),
+  },
   broadcast: {
     describe: 'Tell the whole family circle something (e.g. "She\'s fine, I just spoke to her"). Everyone gets it as a notification.',
     shape: '{"type":"broadcast","text":"…"}',
@@ -87,11 +102,12 @@ const ago = (d) => {
 
 /** Everything the agent may know, as plain text. Also returns the list of sources for the UI. */
 async function gatherContext(patient) {
-  const [status, journalText, zones, commands] = await Promise.all([
+  const [status, journalText, zones, commands, watching] = await Promise.all([
     getPatientStatus(patient),
     journal.writeDay(patient.id).then(() => journal.readDay(patient.id)),
     prisma.geofenceZone.findMany({ where: { patientId: patient.id }, select: { name: true } }),
     prisma.deviceCommand.findMany({ where: { patientId: patient.id }, orderBy: { createdAt: 'desc' }, take: 5 }),
+    prisma.watchRule.findMany({ where: { patientId: patient.id, active: true }, select: { label: true } }),
   ]);
   const loc = status.location;
   const where = loc.inside_safe_zone === false
@@ -106,6 +122,7 @@ async function gatherContext(patient) {
     `Unacknowledged alerts: ${status.needs_attention_count}`,
     `Safe places: ${zones.map((z) => z.name).join(', ') || 'none set up'}`,
     `Memory quiz today: ${status.today.quiz_total ? `${status.today.quiz_correct} of ${status.today.quiz_total} right` : 'not taken yet'}`,
+    `Family is already watching for: ${watching.length ? watching.map((w) => w.label).join('; ') : 'nothing'}`,
     `Recent actions on their phone: ${commands.length ? commands.map((c) => `${describe(c)} (${c.status}, ${ago(c.createdAt)}, by ${c.senderName})`).join('; ') : 'none'}`,
   ];
   return {

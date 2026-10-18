@@ -35,16 +35,17 @@ async function list(req, res) {
   const patient = await prisma.patient.findUnique({ where: { id: pid } });
   const first = (patient?.name || 'They').split(' ')[0];
 
-  const [alerts, answered, failed, notes] = await Promise.all([
+  const [alerts, answered, failed, notes, events] = await Promise.all([
     prisma.logEntry.findMany({ where: { patientId: pid, requiresAttention: true, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 30 }),
     prisma.deviceCommand.findMany({ where: { patientId: pid, type: 'ask', status: 'done', doneAt: { gte: since } }, orderBy: { doneAt: 'desc' }, take: 20 }),
     prisma.deviceCommand.findMany({ where: { patientId: pid, status: { in: ['failed', 'expired'] }, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 10 }),
     prisma.familyBroadcast.findMany({ where: { patientId: pid, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    prisma.familyEvent.findMany({ where: { patientId: pid, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 30 }),
   ]);
 
   const items = [
     ...alerts.map((e) => ({ id: `alert:${e.id}`, kind: 'alert', severity: 'act', at: e.createdAt, acknowledged: !!e.acknowledgedAt, log_entry_id: e.id, ...alertText(e, first) })),
-    ...answered.filter((c) => c.payload?.reply).map((c) => ({
+    ...answered.filter((c) => c.payload?.reply && !c.payload?.fall_check).map((c) => ({
       id: `reply:${c.id}`, kind: 'reply', severity: 'info', at: c.doneAt,
       title: `${first} answered: “${c.payload.reply}”`, body: `You asked: ${c.payload.question}`,
     })),
@@ -52,6 +53,10 @@ async function list(req, res) {
       id: `failed:${c.id}`, kind: 'failed', severity: 'watch', at: c.createdAt,
       title: c.status === 'expired' ? `${first}'s phone didn't pick up an action` : `An action didn't work on ${first}'s phone`,
       body: c.error || `${c.type} from ${c.senderName}`,
+    })),
+    ...events.map((e) => ({
+      id: `event:${e.id}`, kind: e.kind === 'rule' ? 'rule' : e.kind === 'story' ? 'story' : e.severity === 'act' ? 'alert' : 'reply',
+      severity: e.severity, at: e.createdAt, title: e.title, body: e.body,
     })),
     ...notes.map((n) => ({
       id: `note:${n.id}`, kind: 'note', severity: 'info', at: n.createdAt, mine: n.fromUserId === req.user.sub,

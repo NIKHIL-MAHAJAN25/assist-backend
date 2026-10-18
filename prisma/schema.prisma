@@ -49,6 +49,9 @@ model Patient {
   homeLabel   String? @map("home_label")
   tagShowHome Boolean @default(true) @map("tag_show_home")
 
+  // Bedtime "your day" story: local time (HH:MM) the phone reads it; null = off.
+  bedtimeStoryAt String? @default("21:00") @map("bedtime_story_at")
+
   users             User[]
   emergencyContacts EmergencyContact[]
   devices       Device[]
@@ -267,4 +270,40 @@ model FamilyBroadcast {
 
   @@index([patientId, createdAt])
   @@map("family_broadcasts")
+}
+
+// "Tell me when…" — a family member's standing instruction, checked by the scheduler.
+// kind + params come from a closed set (services/ruleEngine.js); label is the plain-English version.
+model WatchRule {
+  id            String    @id @default(uuid())
+  patientId     String    @map("patient_id")
+  createdBy     String    @map("created_by")
+  creatorName   String    @map("creator_name")
+  kind          String
+  params        Json
+  label         String
+  repeat        String    @default("once") // once | daily
+  active        Boolean   @default(true)
+  lastCheckedAt DateTime  @default(now()) @map("last_checked_at")
+  lastFiredAt   DateTime? @map("last_fired_at")
+  firedCount    Int       @default(0) @map("fired_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([patientId, active])
+  @@map("watch_rules")
+}
+
+// Things the system did or noticed on its own, for the family feed: rule hits, fall checks, stories.
+model FamilyEvent {
+  id        String   @id @default(uuid())
+  patientId String   @map("patient_id")
+  kind      String   // rule | fall_check | fall_ok | fall_escalated | story
+  severity  String   @default("info") // info | watch | act
+  title     String
+  body      String   @default("")
+  refId     String?  @map("ref_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([patientId, createdAt])
+  @@map("family_events")
 }

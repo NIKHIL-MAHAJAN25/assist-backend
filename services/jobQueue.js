@@ -14,7 +14,7 @@ const { decideFor } = require('./decisionService');
 // once on the other provider, then Gemini. Stale frames are dropped: the family wants now, not a backlog.
 
 const MODE = () => (process.env.AI_PROVIDER || 'gemini').toLowerCase();
-const FALLBACK_AFTER_S = { frame: 20, summary: 25, agent: 15 };
+const FALLBACK_AFTER_S = { frame: 20, summary: 25, agent: 15, story: 25 };
 const FRAME_STALE_S = 90;
 const RUNNING_TIMEOUT_S = 120;
 const GEMINI_FRAME_GAP_MS = 10000;
@@ -35,6 +35,13 @@ async function enqueueFrame({ device, image, capturedAt, commandId }) {
   });
   // Upload in the background; a Cloudinary failure must never lose the moment itself.
   uploads.set(job.id, uploadFrame(image).catch((e) => { console.error('[upload]', e.message); return null; }));
+  if (MODE() !== 'workers') runFallback(job.id).catch((e) => console.error('[gemini]', e.message));
+  return job;
+}
+
+// Bedtime story (#18): written from the journal, ahead of frames.
+async function enqueueStory({ patientId, prompt }) {
+  const job = await prisma.aiJob.create({ data: { kind: 'story', patientId, payload: { prompt } } });
   if (MODE() !== 'workers') runFallback(job.id).catch((e) => console.error('[gemini]', e.message));
   return job;
 }
@@ -124,6 +131,10 @@ async function finishFrame(job, value, { provider, ms }) {
   });
   decideFor(entry.id);
   journal.writeDay(job.patientId).catch((e) => console.error('[journal]', e.message));
+  // A fall on camera: ask her straight away whether she's okay (#15).
+  if (value.activity_key === 'fallen') {
+    require('./fallCheck').start(job.patientId, { logEntryId: entry.id }).catch((e) => console.error('[fall]', e.message));
+  }
   if (job.payload.command_id) {
     // "Take a photo now" from the Assistant: hand the result back to the family's card.
     const cmd = await prisma.deviceCommand.findUnique({ where: { id: job.payload.command_id } });
@@ -224,4 +235,4 @@ function start() {
   setInterval(tick, 3000).unref();
 }
 
-module.exports = { start, enqueueFrame, enqueueSummary, enqueueAgent, claim, release, complete, waitFor, stats, MODE };
+module.exports = { start, enqueueFrame, enqueueSummary, enqueueAgent, enqueueStory, claim, release, complete, waitFor, stats, MODE };

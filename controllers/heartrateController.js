@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const fallCheck = require('../services/fallCheck');
 
 // Section 8.5 — scripted scenario data from the watch app, not live sensor polling.
 async function ingestHeartrateEvent(req, res) {
@@ -20,6 +21,7 @@ async function ingestHeartrateEvent(req, res) {
     },
   });
 
+  if (scenario === 'emergency') fallCheck.start(req.device.patientId, { logEntryId: logEntry.id, reason: 'Her watch sent an emergency' }).catch(() => {});
   res.status(201).json({ log_entry_id: logEntry.id });
 }
 

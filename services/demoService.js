@@ -141,13 +141,15 @@ async function reset(pid) {
   const since = new Date();
   since.setHours(0, 0, 0, 0);
   const demoDevices = await prisma.device.findMany({ where: { patientId: pid, identifier: { startsWith: 'demo:' } }, select: { id: true } });
-  const [commands, broadcasts, entries, jobs] = await Promise.all([
+  const [commands, broadcasts, entries, jobs, events, rules] = await Promise.all([
     prisma.deviceCommand.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),
     prisma.familyBroadcast.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),
     prisma.logEntry.deleteMany({ where: { patientId: pid, deviceId: { in: demoDevices.map((d) => d.id) } } }),
     prisma.aiJob.deleteMany({ where: { patientId: pid } }),
+    prisma.familyEvent.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),
+    prisma.watchRule.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),
   ]);
-  return { commands: commands.count, broadcasts: broadcasts.count, simulated_readings: entries.count, queue_rows: jobs.count };
+  return { commands: commands.count, broadcasts: broadcasts.count, simulated_readings: entries.count, queue_rows: jobs.count, events: events.count, rules: rules.count };
 }
 
 module.exports = { isDemoMode, demoDevice, listScenes, saveScene, sceneImageBase64, startWalk, stopWalk, isWalkActive, reset };

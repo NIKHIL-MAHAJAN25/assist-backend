@@ -28,6 +28,12 @@ router.get('/patients/:id/commands', ...family, assistant.listCommands);
 router.post('/patients/:id/commands', ...family, assistant.createCommand);
 router.post('/patients/:id/voice-notes', ...family, assistant.uploadVoiceNote);
 router.get('/patients/:id/notifications', ...family, notifications.list);
+router.get('/patients/:id/rules', ...family, assistant.listRules);
+router.post('/patients/:id/rules', ...family, assistant.createRule);
+router.delete('/patients/:id/rules/:rid', ...family, assistant.deleteRule);
+router.post('/patients/:id/story', ...family, assistant.sendStoryNow);
+router.get('/patients/:id/story-settings', ...family, assistant.storySettings);
+router.put('/patients/:id/story-settings', ...family, assistant.storySettings);
 router.post('/patients/:id/broadcasts', ...family, notifications.broadcast);
 
 // Demo kit (DEMO_MODE=1 only)
@@ -37,6 +43,8 @@ router.post('/demo/:id/scenes/:name/play', ...family, demo.playScene);
 router.post('/demo/:id/walk', ...family, demo.walk);
 router.post('/demo/:id/answer', ...family, demo.answer);
 router.post('/demo/:id/reset', ...family, demo.reset);
+router.post('/demo/:id/tick', ...family, demo.tick);
+router.post('/demo/:id/fall', ...family, demo.fall);
 
 router.get('/devices/commands', requireDeviceAuth, assistant.pullCommands);
 router.post('/devices/commands/:cid/ack', requireDeviceAuth, assistant.ackCommand);

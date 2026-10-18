@@ -41,6 +41,14 @@ const TYPES = {
     },
   },
   ring: { label: 'Rang the phone', clean: () => ({}) },
+  story: {
+    label: 'Bedtime story',
+    clean: (b) => {
+      const text = str(b.text, 1500);
+      if (!text) throw new Error('story text is required');
+      return { text, title: str(b.title, 40) || 'Your day' };
+    },
+  },
   reminder: {
     label: 'Reminder',
     clean: (b) => {
@@ -65,6 +73,7 @@ function describe(c) {
   const p = c.payload || {};
   switch (c.type) {
     case 'speak': return `"${p.text}"`;
+    case 'story': return 'bedtime story';
     case 'ask': return `asked "${p.question}"${p.reply ? ` — answered "${p.reply}"` : ''}`;
     case 'voice': return `voice note${p.text ? ` ("${p.text}")` : ''}`;
     case 'reminder': return `reminder "${p.text}" at ${new Date(p.at).toTimeString().slice(0, 5)}`;

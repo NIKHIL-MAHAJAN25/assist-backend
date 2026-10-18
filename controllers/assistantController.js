@@ -2,6 +2,9 @@ const prisma = require('../config/prisma');
 const { gatherContext, buildPrompt, parseAnswer } = require('../services/assistantService');
 const { enqueueAgent, waitFor } = require('../services/jobQueue');
 const { TYPES } = require('../services/commandTypes');
+const fallCheck = require('../services/fallCheck');
+const story = require('../services/storyService');
+const rules = require('../services/ruleEngine');
 const cloudinary = require('../config/cloudinary');
 
 const COMMAND_TTL_MIN = 10; // an action the phone hasn't picked up in 10 min is stale
@@ -102,6 +105,7 @@ async function ackCommand(req, res) {
   else if (cmd.type === 'capture') data = { payload: { ...cmd.payload, uploaded: true } };
   else data = { status: 'done', doneAt: new Date() };
   await prisma.deviceCommand.update({ where: { id: cmd.id }, data });
+  if (cmd.type === 'ask' && cmd.payload?.fall_check && ok) await fallCheck.answered(cmd, String(req.body?.reply || '')).catch((e) => console.error('[fall]', e.message));
   res.json({ ok: true });
 }
 
@@ -131,4 +135,60 @@ function publicCommand(c) {
   };
 }
 
-module.exports = { ask, createCommand, listCommands, pullCommands, ackCommand, uploadVoiceNote };
+// ---- "tell me when…" rules (#8) -----------------------------------------------------------------
+
+// GET /api/patients/:id/rules
+async function listRules(req, res) {
+  if (!ownPatient(req, res)) return;
+  const list = await prisma.watchRule.findMany({ where: { patientId: req.params.id }, orderBy: { createdAt: 'desc' }, take: 30 });
+  res.json(list.map((r) => ({ id: r.id, kind: r.kind, params: r.params, label: r.label, repeat: r.repeat, active: r.active, fired_count: r.firedCount, last_fired_at: r.lastFiredAt, created_by: r.creatorName, created_at: r.createdAt })));
+}
+
+// POST /api/patients/:id/rules  { kind, params, repeat }
+async function createRule(req, res) {
+  if (!ownPatient(req, res)) return;
+  const [patient, user] = await Promise.all([
+    prisma.patient.findUnique({ where: { id: req.params.id } }),
+    prisma.user.findUnique({ where: { id: req.user.sub } }),
+  ]);
+  const clean = rules.cleanRule(req.body || {}, (patient?.name || 'them').split(' ')[0]);
+  if (!clean) return res.status(400).json({ error: 'That rule is not one I can watch for yet' });
+  const r = await prisma.watchRule.create({
+    data: { patientId: req.params.id, createdBy: req.user.sub, creatorName: (user?.name || 'Family').split(' ')[0], ...clean },
+  });
+  res.status(201).json({ id: r.id, label: r.label, kind: r.kind, params: r.params, repeat: r.repeat, active: r.active });
+}
+
+// DELETE /api/patients/:id/rules/:rid
+async function deleteRule(req, res) {
+  if (!ownPatient(req, res)) return;
+  await prisma.watchRule.deleteMany({ where: { id: req.params.rid, patientId: req.params.id } });
+  res.status(204).send();
+}
+
+// ---- bedtime story (#18) ------------------------------------------------------------------------
+
+// POST /api/patients/:id/story — write today's story now and send it to the phone
+async function sendStoryNow(req, res) {
+  if (!ownPatient(req, res)) return;
+  const user = await prisma.user.findUnique({ where: { id: req.user.sub } });
+  try {
+    res.json(await story.sendStory(req.params.id, { senderName: (user?.name || 'Family').split(' ')[0], createdBy: req.user.sub }));
+  } catch (e) {
+    res.status(503).json({ error: e.message });
+  }
+}
+
+// GET/PUT /api/patients/:id/story-settings  { at: "HH:MM" | null }
+async function storySettings(req, res) {
+  if (!ownPatient(req, res)) return;
+  if (req.method === 'PUT') {
+    const at = req.body?.at;
+    if (at !== null && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(at || ''))) return res.status(400).json({ error: 'at must be HH:MM or null' });
+    await prisma.patient.update({ where: { id: req.params.id }, data: { bedtimeStoryAt: at } });
+  }
+  const p = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { bedtimeStoryAt: true } });
+  res.json({ at: p?.bedtimeStoryAt || null });
+}
+
+module.exports = { ask, createCommand, listCommands, pullCommands, ackCommand, uploadVoiceNote, listRules, createRule, deleteRule, sendStoryNow, storySettings };
