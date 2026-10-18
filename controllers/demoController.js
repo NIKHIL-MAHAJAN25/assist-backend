@@ -3,6 +3,7 @@ const demo = require('../services/demoService');
 const journal = require('../services/journalService');
 const { enqueueFrame } = require('../services/jobQueue');
 const { recordPing } = require('./geofenceController');
+const history = require('../services/demoHistory');
 
 const SCENES = ['eating', 'tv', 'resting', 'leaving', 'fall', 'empty'];
 
@@ -22,11 +23,12 @@ function guard(req, res) {
 async function state(req, res) {
   if (!demo.isDemoMode()) return res.json({ demo_mode: false });
   if (!guard(req, res)) return;
-  const [scenes, zones, pendingAsk, latestPhoto] = await Promise.all([
+  const [scenes, zones, pendingAsk, latestPhoto, historyCount] = await Promise.all([
     demo.listScenes(req.params.id),
     prisma.geofenceZone.findMany({ where: { patientId: req.params.id }, select: { name: true } }),
     prisma.deviceCommand.findFirst({ where: { patientId: req.params.id, type: 'ask', status: { in: ['pending', 'delivered'] } }, orderBy: { createdAt: 'desc' } }),
     prisma.logEntry.findFirst({ where: { patientId: req.params.id, entryType: 'frame', imagePublicId: { not: null } }, orderBy: { timestamp: 'desc' } }),
+    history.hasHistory(req.params.id),
   ]);
   res.json({
     demo_mode: true,
@@ -34,6 +36,7 @@ async function state(req, res) {
     scenes,
     has_home: zones.some((z) => /home/i.test(z.name)),
     walk_active: demo.isWalkActive(req.params.id),
+    history_entries: historyCount,
     pending_ask: pendingAsk ? { id: pendingAsk.id, question: pendingAsk.payload.question, quick: pendingAsk.payload.quick } : null,
     latest_photo: latestPhoto ? { log_entry_id: latestPhoto.id, image_public_id: latestPhoto.imagePublicId, activity: latestPhoto.payload?.activity, at: latestPhoto.timestamp } : null,
   });
@@ -121,4 +124,12 @@ async function fall(req, res) {
   res.json({ log_entry_id: entry.id, fall_check: cmd ? cmd.id : 'already running' });
 }
 
-module.exports = { state, saveScene, playScene, walk, answer, reset, tick, fall };
+// POST /api/demo/:id/history { days } — two weeks of plausible past days (for the report, summaries, replay)
+// DELETE /api/demo/:id/history
+async function historyRoute(req, res) {
+  if (!guard(req, res)) return;
+  if (req.method === 'DELETE') return res.json(await history.clearHistory(req.params.id));
+  res.json(await history.seedHistory(req.params.id, req.body?.days || 14));
+}
+
+module.exports = { state, saveScene, playScene, walk, answer, reset, tick, fall, historyRoute };

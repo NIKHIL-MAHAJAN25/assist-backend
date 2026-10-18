@@ -59,6 +59,17 @@ const TYPES = {
       return { text, at: at.toISOString() };
     },
   },
+  album: {
+    label: 'Photo album',
+    clean: (b) => {
+      const slides = (Array.isArray(b.slides) ? b.slides : [])
+        .map((x) => ({ image_url: str(x?.image_url, 500), caption: str(x?.caption, 200) }))
+        .filter((x) => /^https:\/\/res\.cloudinary\.com\//.test(x.image_url) && x.caption)
+        .slice(0, 12);
+      if (!slides.length) throw new Error('the album has no photos yet');
+      return { title: str(b.title, 40) || 'Your family album', slides };
+    },
+  },
   capture: { label: 'Took a photo', clean: () => ({}) },
   guide_home: { label: 'Guided home', clean: () => ({}) },
   quiz: { label: 'Sent a quiz', clean: () => ({}) },
@@ -74,6 +85,7 @@ function describe(c) {
   switch (c.type) {
     case 'speak': return `"${p.text}"`;
     case 'story': return 'bedtime story';
+    case 'album': return `photo album (${(p.slides || []).length} photos)`;
     case 'ask': return `asked "${p.question}"${p.reply ? ` — answered "${p.reply}"` : ''}`;
     case 'voice': return `voice note${p.text ? ` ("${p.text}")` : ''}`;
     case 'reminder': return `reminder "${p.text}" at ${new Date(p.at).toTimeString().slice(0, 5)}`;

@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const journal = require('./journalService');
 const { getPatientStatus } = require('./patientStatusService');
 const { describe } = require('./commandTypes');
+const { recentObjects } = require('./insightsService');
 
 // The family Assistant: a grounded agent that answers from what the system knows and PROPOSES
 // actions. It never acts on the patient by itself — anything that reaches the patient (speaking on
@@ -77,6 +78,28 @@ const ACTIONS = {
     shape: '{"type":"broadcast","text":"…"}',
     validate: (a) => (typeof a.text === 'string' && a.text.trim() ? { type: 'broadcast', text: a.text.trim().slice(0, 500) } : null),
   },
+  find: {
+    describe: 'Show where the camera last saw an object ("where did she leave her glasses?"), with the photo. ' +
+      'Use the plain object word, e.g. "glasses", "keys", "handbag". Answer from the "Objects the camera noticed" list.',
+    shape: '{"type":"find","object":"glasses"}',
+    validate: (a) => (typeof a.object === 'string' && a.object.trim() ? { type: 'find', object: a.object.trim().slice(0, 40) } : null),
+  },
+  replay: {
+    describe: 'Replay their walk on a map, step by step (today\'s path, or their latest time outside the safe places).',
+    shape: '{"type":"replay","window":"today|last_outing"}',
+    validate: (a) => ({ type: 'replay', window: a.window === 'today' ? 'today' : 'last_outing' }),
+  },
+  album: {
+    describe: 'Reminiscence: show the family photo album on their phone as a slow slideshow, each photo read aloud. ' +
+      'Good for calming, for a lonely afternoon, or before a visit.',
+    shape: '{"type":"album"}',
+    validate: () => ({ type: 'album' }),
+  },
+  report: {
+    describe: 'Open the doctor\'s report: 1, 2 or 4 weeks of routine, meals, rest, wandering, falls and the quiz trend, printable.',
+    shape: '{"type":"report","days":14}',
+    validate: (a) => ({ type: 'report', days: [7, 14, 28].includes(Number(a.days)) ? Number(a.days) : 14 }),
+  },
   map: {
     describe: 'Show where they are now on a map, with the safe places.',
     shape: '{"type":"map"}',
@@ -102,12 +125,14 @@ const ago = (d) => {
 
 /** Everything the agent may know, as plain text. Also returns the list of sources for the UI. */
 async function gatherContext(patient) {
-  const [status, journalText, zones, commands, watching] = await Promise.all([
+  const [status, journalText, zones, commands, watching, objects, albumCount] = await Promise.all([
     getPatientStatus(patient),
     journal.writeDay(patient.id).then(() => journal.readDay(patient.id)),
     prisma.geofenceZone.findMany({ where: { patientId: patient.id }, select: { name: true } }),
     prisma.deviceCommand.findMany({ where: { patientId: patient.id }, orderBy: { createdAt: 'desc' }, take: 5 }),
     prisma.watchRule.findMany({ where: { patientId: patient.id, active: true }, select: { label: true } }),
+    recentObjects(patient.id).catch(() => []),
+    prisma.memory.count({ where: { patientId: patient.id } }),
   ]);
   const loc = status.location;
   const where = loc.inside_safe_zone === false
@@ -123,11 +148,13 @@ async function gatherContext(patient) {
     `Safe places: ${zones.map((z) => z.name).join(', ') || 'none set up'}`,
     `Memory quiz today: ${status.today.quiz_total ? `${status.today.quiz_correct} of ${status.today.quiz_total} right` : 'not taken yet'}`,
     `Family is already watching for: ${watching.length ? watching.map((w) => w.label).join('; ') : 'nothing'}`,
+    `Family photo album: ${albumCount ? `${albumCount} photo${albumCount > 1 ? 's' : ''}` : 'empty (add photos on the Memory page)'}`,
     `Recent actions on their phone: ${commands.length ? commands.map((c) => `${describe(c)} (${c.status}, ${ago(c.createdAt)}, by ${c.senderName})`).join('; ') : 'none'}`,
   ];
   return {
-    text: `${lines.join('\n')}\n\nToday's journal (oldest first):\n${journalText.trim() || '(empty)'}`,
-    sources: ['location', 'camera', 'journal', 'alerts', ...(commands.length ? ['messages'] : [])],
+    text: `${lines.join('\n')}\n\nObjects the camera noticed (last 3 days, newest sighting of each):\n${objects.length ? objects.join('\n') : '(none)'}` +
+      `\n\nToday's journal (oldest first):\n${journalText.trim() || '(empty)'}`,
+    sources: ['location', 'camera', 'journal', 'alerts', ...(commands.length ? ['messages'] : []), ...(objects.length ? ['objects'] : [])],
     status,
   };
 }

@@ -6,6 +6,7 @@ const { getSummary, getJournal } = require('../controllers/summaryController');
 const assistant = require('../controllers/assistantController');
 const notifications = require('../controllers/notificationController');
 const demo = require('../controllers/demoController');
+const insights = require('../controllers/insightsController');
 const { requireDeviceAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -35,6 +36,14 @@ router.post('/patients/:id/story', ...family, assistant.sendStoryNow);
 router.get('/patients/:id/story-settings', ...family, assistant.storySettings);
 router.put('/patients/:id/story-settings', ...family, assistant.storySettings);
 router.post('/patients/:id/broadcasts', ...family, notifications.broadcast);
+router.get('/patients/:id/find', ...family, insights.find);
+router.get('/patients/:id/report', ...family, insights.report);
+router.get('/patients/:id/report/note', ...family, insights.reportNote);
+router.get('/patients/:id/memories', ...family, insights.listMemories);
+router.post('/patients/:id/memories', ...family, insights.addMemory);
+router.patch('/patients/:id/memories/:mid', ...family, insights.updateMemory);
+router.delete('/patients/:id/memories/:mid', ...family, insights.deleteMemory);
+router.post('/patients/:id/album', ...family, insights.sendAlbum);
 
 // Demo kit (DEMO_MODE=1 only)
 router.get('/demo/:id', ...family, demo.state);
@@ -45,6 +54,8 @@ router.post('/demo/:id/answer', ...family, demo.answer);
 router.post('/demo/:id/reset', ...family, demo.reset);
 router.post('/demo/:id/tick', ...family, demo.tick);
 router.post('/demo/:id/fall', ...family, demo.fall);
+router.post('/demo/:id/history', ...family, demo.historyRoute);
+router.delete('/demo/:id/history', ...family, demo.historyRoute);
 
 router.get('/devices/commands', requireDeviceAuth, assistant.pullCommands);
 router.post('/devices/commands/:cid/ack', requireDeviceAuth, assistant.ackCommand);

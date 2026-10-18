@@ -140,7 +140,7 @@ async function reset(pid) {
   stopWalk(pid);
   const since = new Date();
   since.setHours(0, 0, 0, 0);
-  const demoDevices = await prisma.device.findMany({ where: { patientId: pid, identifier: { startsWith: 'demo:' } }, select: { id: true } });
+  const demoDevices = await prisma.device.findMany({ where: { patientId: pid, identifier: { startsWith: 'demo:', not: 'demo:history' } }, select: { id: true } });
   const [commands, broadcasts, entries, jobs, events, rules] = await Promise.all([
     prisma.deviceCommand.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),
     prisma.familyBroadcast.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),

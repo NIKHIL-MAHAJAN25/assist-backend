@@ -307,3 +307,17 @@ model FamilyEvent {
   @@index([patientId, createdAt])
   @@map("family_events")
 }
+
+// Reminiscence (#21): family photos with a line each, shown and read aloud on the patient's phone.
+model Memory {
+  id          String   @id @default(uuid())
+  patientId   String   @map("patient_id")
+  imageUrl    String   @map("image_url")
+  caption     String
+  createdBy   String   @map("created_by")
+  creatorName String   @map("creator_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([patientId, createdAt])
+  @@map("memories")
+}

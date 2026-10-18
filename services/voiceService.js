@@ -122,6 +122,7 @@ function phraseFor(cmd, first) {
     case 'story': return p.text;
     case 'guide_home': return `${first}, it's time to head home. Look at your phone. The arrow will show you the way.`;
     case 'quiz': return `${first}, ${from} sent you a few questions about your day. Tap Questions when you're ready.`;
+    case 'album': return `${first}, ${from} sent you some photos to look at together.`;
     case 'calm':
       return `${first}, it's ${from}. You're safe. Everything is all right. Let's breathe together. ... Breathe in slowly. ... And out. ... Breathe in. ... And out. ... You're doing well. We love you.`;
     default: return null;
@@ -144,21 +145,27 @@ async function warmUp(patients) {
  */
 const HOLD_MS = 10000;
 // A long, unhurried text (the bedtime story) may wait longer for its natural voice than a quick message.
-const holdFor = (type) => (type === 'story' ? 45000 : HOLD_MS);
+const holdFor = (type) => (type === 'story' || type === 'album' ? 45000 : HOLD_MS);
 async function prepareCommand(cmd) {
   const prisma = require('../config/prisma');
   try {
     const pt = await prisma.patient.findUnique({ where: { id: cmd.patientId }, select: { name: true } });
     const phrase = phraseFor(cmd, (pt?.name || 'there').split(' ')[0]);
-    const url = phrase ? await speechFor(phrase, { timeoutMs: holdFor(cmd.type) }) : null;
+    const timeoutMs = holdFor(cmd.type);
+    // The album also gets one recording per photo, made side by side (each is cached forever).
+    const [url, slideUrls] = await Promise.all([
+      phrase ? speechFor(phrase, { timeoutMs }) : null,
+      cmd.type === 'album' ? Promise.all((cmd.payload?.slides || []).map((sl) => speechFor(sl.caption, { timeoutMs }))) : null,
+    ]);
     const fresh = await prisma.deviceCommand.findUnique({ where: { id: cmd.id } });
     if (!fresh) return;
-    await prisma.deviceCommand.update({ where: { id: cmd.id }, data: { payload: { ...fresh.payload, voice_pending: false, ...(url && { audio_url: url }) } } });
+    const extra = slideUrls ? { slides: (fresh.payload.slides || []).map((sl, i) => ({ ...sl, ...(slideUrls[i] && { audio_url: slideUrls[i] }) })) } : {};
+    await prisma.deviceCommand.update({ where: { id: cmd.id }, data: { payload: { ...fresh.payload, ...extra, voice_pending: false, ...(url && { audio_url: url }) } } });
   } catch (e) {
     console.error('[tts]', e.message);
   }
 }
-const SPOKEN = new Set(['speak', 'ask', 'reminder', 'story', 'guide_home', 'quiz', 'calm']);
+const SPOKEN = new Set(['speak', 'ask', 'reminder', 'story', 'guide_home', 'quiz', 'calm', 'album']);
 const wantsVoice = (type) => enabled() && SPOKEN.has(type);
 
 module.exports = { AUDIO_DIR, speechFor, phraseFor, warmUp, enabled, prepareCommand, wantsVoice, holdFor, HOLD_MS, VOICE };
