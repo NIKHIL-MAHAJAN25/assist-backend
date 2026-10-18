@@ -113,7 +113,9 @@ async function uploadVoiceNote(req, res) {
   const { audio, mime = 'audio/webm' } = req.body || {};
   if (!audio || typeof audio !== 'string') return res.status(400).json({ error: 'audio is required' });
   if (audio.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'Voice note is too long (keep it under 2 minutes)' });
-  const r = await cloudinary.uploader.upload(`data:${mime};base64,${audio}`, { resource_type: 'video', folder: 'assist/voice' });
+  // Browsers report e.g. "audio/webm;codecs=opus"; the parameter breaks the data URI for Cloudinary.
+  const type = String(mime).split(';')[0].trim() || 'audio/webm';
+  const r = await cloudinary.uploader.upload(`data:${type};base64,${audio}`, { resource_type: 'video', folder: 'assist/voice' });
   const url = cloudinary.url(r.public_id, { resource_type: 'video', format: 'mp3', secure: true });
   res.status(201).json({ url, seconds: Math.round(r.duration || 0) });
 }
