@@ -3,6 +3,7 @@ const journal = require('./journalService');
 const { getPatientStatus } = require('./patientStatusService');
 const { describe } = require('./commandTypes');
 const { recentObjects } = require('./insightsService');
+const { buildEvidence, evidenceText } = require('./evidenceService');
 
 // The family Assistant: a grounded agent that answers from what the system knows and PROPOSES
 // actions. It never acts on the patient by itself — anything that reaches the patient (speaking on
@@ -125,7 +126,7 @@ const ago = (d) => {
 
 /** Everything the agent may know, as plain text. Also returns the list of sources for the UI. */
 async function gatherContext(patient) {
-  const [status, journalText, zones, commands, watching, objects, albumCount] = await Promise.all([
+  const [status, journalText, zones, commands, watching, objects, albumCount, evidence] = await Promise.all([
     getPatientStatus(patient),
     journal.writeDay(patient.id).then(() => journal.readDay(patient.id)),
     prisma.geofenceZone.findMany({ where: { patientId: patient.id }, select: { name: true } }),
@@ -133,6 +134,7 @@ async function gatherContext(patient) {
     prisma.watchRule.findMany({ where: { patientId: patient.id, active: true }, select: { label: true } }),
     recentObjects(patient.id).catch(() => []),
     prisma.memory.count({ where: { patientId: patient.id } }),
+    buildEvidence(patient.id).catch(() => []),
   ]);
   const loc = status.location;
   const where = loc.inside_safe_zone === false
@@ -153,9 +155,11 @@ async function gatherContext(patient) {
   ];
   return {
     text: `${lines.join('\n')}\n\nObjects the camera noticed (last 3 days, newest sighting of each):\n${objects.length ? objects.join('\n') : '(none)'}` +
-      `\n\nToday's journal (oldest first):\n${journalText.trim() || '(empty)'}`,
+      `\n\nToday's journal (oldest first):\n${journalText.trim() || '(empty)'}` +
+      `\n\nEvidence you can cite (today, oldest first):\n${evidenceText(evidence)}`,
     sources: ['location', 'camera', 'journal', 'alerts', ...(commands.length ? ['messages'] : []), ...(objects.length ? ['objects'] : [])],
     status,
+    evidence,
   };
 }
 
@@ -165,6 +169,10 @@ function buildPrompt({ firstName, caregiverName, context, history, message }) {
 with memory loss and is watched over by a home camera, their phone's location, and reminders. Answer ONLY from
 the context below; if it doesn't say, say you don't know. Be brief and warm (1–3 sentences), plain words, no
 medical advice. If something looks unsafe, say so plainly and suggest calling them.
+
+Show your evidence: when a sentence relies on a specific item from the "Evidence you can cite" list,
+end that sentence with its id in square brackets, e.g. "She had lunch at the table at 1:10 [E4]."
+Cite at most 3 ids, only ids that exist in the list, and never cite for general advice.
 
 You can propose actions. The family member must confirm anything that reaches ${firstName}; you never send it
 yourself, so phrase it as a suggestion ("I can say this to her phone:"). Propose an action only when it helps.

@@ -25,6 +25,7 @@ router.get('/patients/:id/decisions', ...family, listDecisions);
 router.get('/patients/:id/summary', ...family, getSummary);
 router.get('/patients/:id/journal', ...family, getJournal);
 router.post('/patients/:id/assistant', ...family, assistant.ask);
+router.post('/patients/:id/speech', ...family, assistant.speech);
 router.get('/patients/:id/commands', ...family, assistant.listCommands);
 router.post('/patients/:id/commands', ...family, assistant.createCommand);
 router.post('/patients/:id/voice-notes', ...family, assistant.uploadVoiceNote);

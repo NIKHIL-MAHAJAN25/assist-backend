@@ -7,6 +7,7 @@ const voice = require('../services/voiceService');
 const story = require('../services/storyService');
 const rules = require('../services/ruleEngine');
 const cloudinary = require('../config/cloudinary');
+const { citedIn, cleanMarkers } = require('../services/evidenceService');
 
 const COMMAND_TTL_MIN = 10; // an action the phone hasn't picked up in 10 min is stale
 
@@ -44,8 +45,29 @@ async function ask(req, res) {
   if (!done || done.status !== 'done') {
     return res.status(503).json({ error: 'The assistant could not answer just now. Try again in a moment.' });
   }
-  const { reply, actions } = parseAnswer(done.result.text);
-  res.json({ reply, actions, provider: done.result.provider, sources: ctx.sources, ms: Date.now() - started });
+  const parsed = parseAnswer(done.result.text);
+  const reply = cleanMarkers(parsed.reply, ctx.evidence);
+  res.json({
+    reply,
+    actions: parsed.actions,
+    evidence: citedIn(reply, ctx.evidence), // the photos/readings behind each [E#] in the reply
+    provider: done.result.provider,
+    sources: ctx.sources,
+    ms: Date.now() - started,
+  });
+}
+
+// POST /api/patients/:id/speech  { text } → { url }
+// The Assistant reading its answer aloud on the website, in the same natural voice the patient's
+// phone uses (generated once per sentence and served from the server's disk).
+async function speech(req, res) {
+  if (!ownPatient(req, res)) return;
+  const text = String(req.body?.text || '').replace(/\s?\[E\d{1,3}\]/g, '').trim().slice(0, 900);
+  if (!text) return res.status(400).json({ error: 'text is required' });
+  if (!voice.enabled()) return res.status(503).json({ error: 'Natural voice is turned off on the server' });
+  const url = await voice.speechFor(text, { timeoutMs: 25000 });
+  if (!url) return res.status(503).json({ error: 'The voice took too long. Try again.' });
+  res.json({ url });
 }
 
 // POST /api/patients/:id/commands  { type, ...fields }  — the family confirmed an action.
@@ -195,4 +217,4 @@ async function storySettings(req, res) {
   res.json({ at: p?.bedtimeStoryAt || null });
 }
 
-module.exports = { ask, createCommand, listCommands, pullCommands, ackCommand, uploadVoiceNote, listRules, createRule, deleteRule, sendStoryNow, storySettings };
+module.exports = { ask, speech, createCommand, listCommands, pullCommands, ackCommand, uploadVoiceNote, listRules, createRule, deleteRule, sendStoryNow, storySettings };
