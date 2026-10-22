@@ -1,7 +1,26 @@
-node_modules/
+# Secrets: real values live only in local .env files
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Editors, OS, local tool settings
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+.claude/
+.codex/
+
+# Logs
 *.log
-server.log
-server.err.log
-deploy/.env
+# Dependencies and runtime data
+node_modules/
 journal/
+tts-cache/
+uploads/
+deploy/.env
+*.tgz
