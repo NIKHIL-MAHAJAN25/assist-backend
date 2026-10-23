@@ -125,11 +125,21 @@ async function recogniseEntry(entry, imageBase64) {
       update: {},
       create: { logEntryId: entry.id, enrolledFaceId: p.face_id },
     })));
+    // A face found in a photo the description called empty: someone is there after all.
+    const quiet = ['empty_room', 'not_visible'].includes(entry.payload?.activity_key);
+    const names = result.people.map((p) => shortName(p.name));
+    const seen = quiet && {
+      activity_key: 'with_visitor',
+      activity: names.length ? `${names.join(' and ')} in front of the camera` : 'someone in front of the camera',
+      person_state: 'close to the camera',
+      described_as: entry.payload?.activity || null,
+    };
     // Merged in the database: the decision layer writes to the same entry at about the same time.
     await mergePayload(entry.id, {
       people: result.people.map((p) => ({ name: shortName(p.name), full_name: p.name, face_id: p.face_id, distance: p.distance })),
       unknown_faces: result.unknown,
       faces_ms: Date.now() - started,
+      ...seen,
     });
     if (result.people.length) console.log(`[faces] ${entry.id}: ${result.people.map((p) => `${p.name} (${p.distance})`).join(', ')}`);
     return result;
@@ -170,7 +180,7 @@ async function announceVisitors(entry, people) {
         kind: 'visitor',
         severity: 'info',
         title: `${name} was seen at home with ${first}`,
-        body: `The home camera recognised ${name}${patient.announceFaces ? `, and ${first}'s phone told her who's there` : ''}.`,
+        body: `The home camera recognised ${name}${patient.announceFaces ? `, and ${first}'s phone said who's there` : ''}.`,
         refId: p.face_id,
       },
     });

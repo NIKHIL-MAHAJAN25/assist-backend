@@ -132,13 +132,14 @@ async function finishFrame(job, value, { provider, ms }) {
   });
   decideFor(entry.id);
   journal.writeDay(job.patientId).catch((e) => console.error('[journal]', e.message));
-  // Who's in the photo (enrolled family), when someone is in view. Runs after the moment is saved,
-  // so a slow or failed face check never delays or loses the moment itself.
-  if (image && !['empty_room', 'not_visible'].includes(value.activity_key)) {
+  // Who's in the photo (enrolled family). Runs on every photo — the description model often calls a
+  // face right up at the camera "no one in the room". Runs after the moment is saved, so a slow or
+  // failed face check never delays or loses the moment itself.
+  if (image) {
     faces.recogniseEntry(entry, image)
       .then(async (r) => {
-        if (!r?.people?.length) return;
-        await faces.announceVisitors(entry, r.people);
+        if (!r?.faces) return;
+        if (r.people.length) await faces.announceVisitors(entry, r.people);
         await journal.writeDay(job.patientId);
       })
       .catch((e) => console.error('[faces]', e.message));
