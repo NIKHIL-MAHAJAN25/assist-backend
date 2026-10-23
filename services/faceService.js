@@ -64,8 +64,10 @@ async function facesIn(buffer) {
         .withFaceDescriptors();
       if (found.length) break;
     }
+    const width = input.shape[1];
     return found.map((f) => ({
       descriptor: Array.from(f.descriptor),
+      size: Math.round((f.detection.box.width / width) * 100) / 100, // share of the photo's width
       score: Math.round(f.detection.score * 100) / 100,
       box: { x: Math.round(f.detection.box.x), y: Math.round(f.detection.box.y), w: Math.round(f.detection.box.width), h: Math.round(f.detection.box.height) },
     }));
@@ -103,7 +105,7 @@ async function recognise(buffer, enrolled) {
       unknown += 1;
     }
   }
-  return { faces: faces.length, people, unknown };
+  return { faces: faces.length, people, unknown, largest: Math.max(0, ...faces.map((f) => f.size)) };
 }
 
 /** The name as the family wrote it, without a bracketed relation: "Sarah (daughter)" → "Sarah". */
@@ -125,8 +127,9 @@ async function recogniseEntry(entry, imageBase64) {
       update: {},
       create: { logEntryId: entry.id, enrolledFaceId: p.face_id },
     })));
-    // A face found in a photo the description called empty: someone is there after all.
-    const quiet = ['empty_room', 'not_visible'].includes(entry.payload?.activity_key);
+    // A face found in a photo the description called empty: someone is there after all. Only for an
+    // enrolled person or a big face (≥ 15 % of the width), so a small face on a TV or poster doesn't count.
+    const quiet = ['empty_room', 'not_visible'].includes(entry.payload?.activity_key) && (result.people.length > 0 || result.largest >= 0.15);
     const names = result.people.map((p) => shortName(p.name));
     const seen = quiet && {
       activity_key: 'with_visitor',
