@@ -138,9 +138,10 @@ async function startWalk(pid, direction, recordPing) {
 /** Clears what demos create today (actions, answers, broadcasts, simulated readings, queue rows). */
 async function reset(pid) {
   stopWalk(pid);
+  require('./watchService').stopSim(pid);
   const since = new Date();
   since.setHours(0, 0, 0, 0);
-  const demoDevices = await prisma.device.findMany({ where: { patientId: pid, identifier: { startsWith: 'demo:', not: 'demo:history' } }, select: { id: true } });
+  const demoDevices = await prisma.device.findMany({ where: { patientId: pid, identifier: { startsWith: 'demo:', notIn: ['demo:history', 'demo:watch-history'] } }, select: { id: true } });
   const [commands, broadcasts, entries, jobs, events, rules] = await Promise.all([
     prisma.deviceCommand.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),
     prisma.familyBroadcast.deleteMany({ where: { patientId: pid, createdAt: { gte: since } } }),

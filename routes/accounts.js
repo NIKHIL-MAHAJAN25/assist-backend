@@ -7,6 +7,7 @@ const assistant = require('../controllers/assistantController');
 const notifications = require('../controllers/notificationController');
 const demo = require('../controllers/demoController');
 const insights = require('../controllers/insightsController');
+const watchCtl = require('../controllers/watchController');
 const { requireDeviceAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -57,8 +58,15 @@ router.post('/demo/:id/tick', ...family, demo.tick);
 router.post('/demo/:id/fall', ...family, demo.fall);
 router.post('/demo/:id/history', ...family, demo.historyRoute);
 router.delete('/demo/:id/history', ...family, demo.historyRoute);
+router.post('/demo/:id/fill', ...family, demo.fill);
+router.post('/demo/:id/clear-log', ...family, demo.clearLog);
+router.post('/demo/:id/watch',...family, watchCtl.demoWatch);
+router.post('/demo/:id/watch/history', ...family, watchCtl.demoWatchHistory);
+router.delete('/demo/:id/watch/history', ...family, watchCtl.demoWatchHistory);
+router.get('/patients/:id/vitals', ...family, watchCtl.vitals);
 
 router.get('/devices/commands', requireDeviceAuth, assistant.pullCommands);
+router.get('/watch/commands', requireDeviceAuth, assistant.pullCommands);
 router.post('/devices/commands/:cid/ack', requireDeviceAuth, assistant.ackCommand);
 
 module.exports = router;

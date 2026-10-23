@@ -248,6 +248,7 @@ model DeviceCommand {
   id          String    @id @default(uuid())
   patientId   String    @map("patient_id")
   type        String    // speak
+  target      String    @default("phone") // phone | watch — each device polls only its own queue
   payload     Json
   status      String    @default("pending") // pending | delivered | done | failed | expired
   createdBy   String    @map("created_by")
@@ -259,6 +260,7 @@ model DeviceCommand {
   error       String?
 
   @@index([patientId, status])
+  @@index([patientId, target, status])
   @@map("device_commands")
 }
 

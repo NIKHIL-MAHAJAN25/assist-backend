@@ -83,13 +83,15 @@ async function walk(req, res) {
 // POST /api/demo/:id/answer  { reply } — answer the latest question as Margaret (no phone needed)
 async function answer(req, res) {
   if (!guard(req, res)) return;
-  const cmd = await prisma.deviceCommand.findFirst({ where: { patientId: req.params.id, type: 'ask', status: { in: ['pending', 'delivered'] } }, orderBy: { createdAt: 'desc' } });
+  const via = req.body?.via === 'watch' ? 'watch' : 'phone';
+  const cmd = await prisma.deviceCommand.findFirst({ where: { patientId: req.params.id, type: 'ask', target: via, status: { in: ['pending', 'delivered'] } }, orderBy: { createdAt: 'desc' } });
   if (!cmd) return res.status(404).json({ error: 'No question is waiting for an answer' });
   const reply = String(req.body?.reply || '').trim().slice(0, 300) || 'Yes';
-  if (cmd.payload?.fall_check) await require('../services/fallCheck').answered(cmd, reply).catch(() => {});
+  const answeredCmd = { ...cmd, payload: { ...cmd.payload, via } };
+  if (cmd.payload?.fall_check) await require('../services/fallCheck').answered(answeredCmd, reply).catch(() => {});
   await prisma.deviceCommand.update({
     where: { id: cmd.id },
-    data: { status: 'done', doneAt: new Date(), deliveredAt: cmd.deliveredAt || new Date(), payload: { ...cmd.payload, reply, replied_at: new Date().toISOString() } },
+    data: { status: 'done', doneAt: new Date(), deliveredAt: cmd.deliveredAt || new Date(), payload: { ...cmd.payload, reply, via, replied_at: new Date().toISOString() } },
   });
   res.json({ answered: cmd.payload.question, reply });
 }
@@ -132,4 +134,29 @@ async function historyRoute(req, res) {
   res.json(await history.seedHistory(req.params.id, req.body?.days || 14));
 }
 
-module.exports = { state, saveScene, playScene, walk, answer, reset, tick, fall, historyRoute };
+// POST /api/demo/:id/fill — two weeks of past days in the log plus a week of watch readings.
+async function fill(req, res) {
+  if (!guard(req, res)) return;
+  const log = await history.seedHistory(req.params.id, 14);
+  const watch = await require('../services/watchService').seedHistory(req.params.id, 7);
+  res.json({ ...log, watch_readings: watch.readings });
+}
+
+// POST /api/demo/:id/clear-log — an empty log (every day), so frames from the real camera stand alone.
+// Watch readings are kept: they live on the Watch tab, not in the log.
+async function clearLog(req, res) {
+  if (!guard(req, res)) return;
+  const pid = req.params.id;
+  const ids = (await prisma.logEntry.findMany({ where: { patientId: pid, entryType: { not: 'heartrate' } }, select: { id: true } })).map((e) => e.id);
+  const questions = await prisma.quizQuestion.findMany({ where: { sourceLogEntryId: { in: ids } }, select: { id: true } });
+  await prisma.quizAttempt.deleteMany({ where: { quizQuestionId: { in: questions.map((q) => q.id) } } });
+  await prisma.quizQuestion.deleteMany({ where: { id: { in: questions.map((q) => q.id) } } });
+  await prisma.logEntryFace.deleteMany({ where: { logEntryId: { in: ids } } });
+  await prisma.familyEvent.deleteMany({ where: { patientId: pid, OR: [{ refId: { in: ids } }, { kind: { in: ['visitor', 'fall_check', 'fall_ok', 'fall_escalated', 'rule'] } }] } });
+  await prisma.aiJob.deleteMany({ where: { patientId: pid } });
+  const r = await prisma.logEntry.deleteMany({ where: { id: { in: ids } } });
+  for (let ago = 14; ago >= 0; ago--) await journal.writeDay(pid, new Date(Date.now() - ago * 864e5)).catch(() => {});
+  res.json({ removed: r.count });
+}
+
+module.exports = { fill, clearLog, state, saveScene, playScene, walk, answer, reset, tick, fall, historyRoute };

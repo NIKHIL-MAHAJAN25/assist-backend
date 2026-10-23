@@ -20,7 +20,9 @@ function alertText(e, first) {
     case 'frame':
       return { title: `Camera: ${p.activity || 'something needs a look'}`, body: p.person_state && p.person_state !== 'not visible' ? p.person_state : 'From the home camera.' };
     case 'heartrate':
-      return { title: `Watch alert for ${first}`, body: `${p.scenario || 'Unusual reading'} · heart rate ${p.heart_rate ?? '?'}` };
+      return p.motion_pattern === 'sos'
+        ? { title: `${first} pressed Hold for help on the watch`, body: `Heart rate ${p.heart_rate ?? '?'} bpm. Call now.` }
+        : { title: `${first}'s watch sent an emergency`, body: `Heart rate spike (${p.heart_rate ?? '?'} bpm), then still. Open the Watch tab.` };
     case 'sighting':
       return { title: `Someone tapped ${first}'s emergency tag`, body: p.kind === 'location' ? 'They shared where they are.' : 'Open the app to see more.' };
     default:
@@ -36,7 +38,7 @@ async function list(req, res) {
   const first = (patient?.name || 'They').split(' ')[0];
 
   const [alerts, answered, failed, notes, events] = await Promise.all([
-    prisma.logEntry.findMany({ where: { patientId: pid, requiresAttention: true, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 30 }),
+    prisma.logEntry.findMany({ where: { patientId: pid, requiresAttention: true, timestamp: { gte: since } }, orderBy: { timestamp: 'desc' }, take: 30 }),
     prisma.deviceCommand.findMany({ where: { patientId: pid, type: 'ask', status: 'done', doneAt: { gte: since } }, orderBy: { doneAt: 'desc' }, take: 20 }),
     prisma.deviceCommand.findMany({ where: { patientId: pid, status: { in: ['failed', 'expired'] }, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 10 }),
     prisma.familyBroadcast.findMany({ where: { patientId: pid, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 20 }),
@@ -44,14 +46,15 @@ async function list(req, res) {
   ]);
 
   const items = [
-    ...alerts.map((e) => ({ id: `alert:${e.id}`, kind: 'alert', severity: 'act', at: e.createdAt, acknowledged: !!e.acknowledgedAt, log_entry_id: e.id, ...alertText(e, first) })),
+    // Hold for help already arrives as its own family event.
+    ...alerts.filter((e) => e.payload?.motion_pattern !== 'sos').map((e) => ({ id: `alert:${e.id}`, kind: 'alert', severity: 'act', at: e.timestamp, acknowledged: !!e.acknowledgedAt, log_entry_id: e.id, ...alertText(e, first) })),
     ...answered.filter((c) => c.payload?.reply && !c.payload?.fall_check).map((c) => ({
       id: `reply:${c.id}`, kind: 'reply', severity: 'info', at: c.doneAt,
       title: `${first} answered: “${c.payload.reply}”`, body: `You asked: ${c.payload.question}`,
     })),
     ...failed.map((c) => ({
       id: `failed:${c.id}`, kind: 'failed', severity: 'watch', at: c.createdAt,
-      title: c.status === 'expired' ? `${first}'s phone didn't pick up an action` : `An action didn't work on ${first}'s phone`,
+      title: c.status === 'expired' ? `${first}'s ${c.target === 'watch' ? 'watch' : 'phone'} didn't pick up an action` : `An action didn't work on ${first}'s ${c.target === 'watch' ? 'watch' : 'phone'}`,
       body: c.error || `${c.type} from ${c.senderName}`,
     })),
     ...events.map((e) => ({

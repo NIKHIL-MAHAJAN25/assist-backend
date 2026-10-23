@@ -1,27 +1,13 @@
-const prisma = require('../config/prisma');
-const fallCheck = require('../services/fallCheck');
+const watch = require('../services/watchService');
 
 // Section 8.5 — scripted scenario data from the watch app, not live sensor polling.
 async function ingestHeartrateEvent(req, res) {
-  const { device_id, scenario, heart_rate, motion_pattern, timestamp } = req.body;
+  const { device_id, scenario, heart_rate, motion_pattern, timestamp, battery } = req.body;
   if (!device_id || !scenario) return res.status(400).json({ error: 'device_id and scenario are required' });
-  if (!['normal', 'confusion', 'emergency'].includes(scenario)) {
-    return res.status(400).json({ error: 'scenario must be normal, confusion, or emergency' });
+  if (!watch.SCENARIOS.includes(scenario)) {
+    return res.status(400).json({ error: 'scenario must be normal, confusion, emergency or sos' });
   }
-
-  const device = req.device;
-  const logEntry = await prisma.logEntry.create({
-    data: {
-      patientId: device.patientId,
-      deviceId: device.id,
-      entryType: 'heartrate',
-      timestamp: timestamp ? new Date(timestamp) : new Date(),
-      payload: { scenario, heart_rate, motion_pattern },
-      requiresAttention: scenario === 'emergency',
-    },
-  });
-
-  if (scenario === 'emergency') fallCheck.start(req.device.patientId, { logEntryId: logEntry.id, reason: 'Her watch sent an emergency' }).catch(() => {});
+  const logEntry = await watch.recordReading(req.device, { scenario, heart_rate, motion_pattern, timestamp, battery });
   res.status(201).json({ log_entry_id: logEntry.id });
 }
 

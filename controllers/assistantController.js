@@ -8,8 +8,10 @@ const story = require('../services/storyService');
 const rules = require('../services/ruleEngine');
 const cloudinary = require('../config/cloudinary');
 const { citedIn, cleanMarkers } = require('../services/evidenceService');
+const watch = require('../services/watchService');
 
 const COMMAND_TTL_MIN = 10; // an action the phone hasn't picked up in 10 min is stale
+const WATCH_TYPES = ['ask', 'speak', 'reminder', 'guide_home', 'calm'];
 
 function ownPatient(req, res) {
   if (req.user.patient_id !== req.params.id) {
@@ -81,11 +83,14 @@ async function createCommand(req, res) {
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
+  const target = req.body?.target === 'watch' ? 'watch' : 'phone';
+  if (target === 'watch' && !WATCH_TYPES.includes(type)) return res.status(400).json({ error: `The watch can't do "${type}"` });
   const user = await prisma.user.findUnique({ where: { id: req.user.sub } });
   const cmd = await prisma.deviceCommand.create({
     data: {
       patientId: req.params.id,
       type,
+      target,
       payload: voice.wantsVoice(type) ? { ...payload, voice_pending: true } : payload,
       createdBy: req.user.sub,
       senderName: (user?.name || 'Family').split(' ')[0],
@@ -93,6 +98,7 @@ async function createCommand(req, res) {
     },
   });
   if (voice.wantsVoice(type)) voice.prepareCommand(cmd); // natural voice, ready in a few seconds
+  if (target === 'watch') watch.simulateDelivery(cmd); // demo watch only
   res.status(201).json(publicCommand(cmd));
 }
 
@@ -105,10 +111,13 @@ async function listCommands(req, res) {
 }
 
 // GET /api/devices/commands?device_id=…  (device key) — the phone picks up what's waiting.
+// GET /api/watch/commands?device_id=…    (watch key)  — the watch's own queue (target = watch).
 async function pullCommands(req, res) {
   const patientId = req.device.patientId;
+  const target = req.path.startsWith('/watch') ? 'watch' : 'phone';
+  if (target === 'watch' && req.device.deviceType !== 'watch') return res.status(403).json({ error: 'Only a paired watch can use this' });
   await expireOld(patientId);
-  const pending = (await prisma.deviceCommand.findMany({ where: { patientId, status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 8 }))
+  const pending = (await prisma.deviceCommand.findMany({ where: { patientId, target, status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 8 }))
     .filter((c) => !c.payload?.voice_pending || c.createdAt.getTime() < Date.now() - voice.holdFor(c.type) - 2000)
     .slice(0, 5);
   if (pending.length) {
@@ -127,7 +136,7 @@ async function ackCommand(req, res) {
   const ok = req.body?.ok !== false;
   let data;
   if (!ok) data = { status: 'failed', error: String(req.body?.error || '').slice(0, 200), doneAt: new Date() };
-  else if (cmd.type === 'ask') data = { status: 'done', doneAt: new Date(), payload: { ...cmd.payload, reply: String(req.body?.reply || '').trim().slice(0, 300), replied_at: new Date().toISOString() } };
+  else if (cmd.type === 'ask') data = { status: 'done', doneAt: new Date(), payload: { ...cmd.payload, reply: String(req.body?.reply || '').trim().slice(0, 300), replied_at: new Date().toISOString(), ...(req.body?.via && { via: String(req.body.via).slice(0, 10) }) } };
   else if (cmd.type === 'capture') data = { payload: { ...cmd.payload, uploaded: true } };
   else data = { status: 'done', doneAt: new Date() };
   await prisma.deviceCommand.update({ where: { id: cmd.id }, data });
@@ -156,7 +165,7 @@ async function expireOld(patientId) {
 
 function publicCommand(c) {
   return {
-    id: c.id, type: c.type, ...c.payload, status: c.status, from: c.senderName,
+    id: c.id, type: c.type, ...c.payload, target: c.target, status: c.status, from: c.senderName,
     created_at: c.createdAt, delivered_at: c.deliveredAt, done_at: c.doneAt, error: c.error,
   };
 }

@@ -7,7 +7,8 @@ async function listLogEntries(req, res) {
   const entries = await prisma.logEntry.findMany({
     where: {
       patientId: patient_id,
-      ...(type && { entryType: type }),
+      // Watch readings live on the Watch tab (GET /patients/:id/vitals), not in the log.
+      ...(type ? { entryType: type } : { entryType: { not: 'heartrate' } }),
       ...((from || to) && {
         timestamp: {
           ...(from && { gte: new Date(from) }),
