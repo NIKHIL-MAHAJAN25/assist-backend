@@ -67,7 +67,7 @@ async function vitals(patientId, range = 'today') {
     prisma.logEntry.findMany({ where: { patientId, entryType: 'heartrate', timestamp: { gte: from } }, orderBy: { timestamp: 'asc' }, select: { id: true, timestamp: true, payload: true, requiresAttention: true } }),
     prisma.device.findMany({ where: { patientId, deviceType: 'watch' }, select: { id: true, identifier: true, createdAt: true } }),
     prisma.familyEvent.findMany({ where: { patientId, createdAt: { gte: from }, kind: { in: ['fall_check', 'fall_ok', 'fall_escalated', 'watch_unsettled', 'sos'] } }, orderBy: { createdAt: 'desc' }, take: 40 }),
-    prisma.deviceCommand.findMany({ where: { patientId, target: 'watch', createdAt: { gte: from } }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    prisma.deviceCommand.findMany({ where: { patientId, target: 'watch', type: { not: 'dismiss' }, createdAt: { gte: from } }, orderBy: { createdAt: 'desc' }, take: 20 }),
   ]);
   const latestRow = await prisma.logEntry.findFirst({ where: { patientId, entryType: 'heartrate' }, orderBy: { timestamp: 'desc' } });
 
@@ -208,7 +208,7 @@ const isSimulating = (patientId) => (sims.get(patientId)?.scenario) || null;
 
 /** With the simulated watch running, "deliver" watch commands like the real one would. */
 function simulateDelivery(cmd) {
-  if (!isSimulating(cmd.patientId)) return;
+  if (!isSimulating(cmd.patientId) || cmd.type === 'dismiss') return;
   setTimeout(() => prisma.deviceCommand.update({ where: { id: cmd.id }, data: { status: 'delivered', deliveredAt: new Date() } }).catch(() => {}), 1500);
   if (cmd.payload?.fall_check) return; // answered from the Watch tab, so "no answer" can be shown too
   setTimeout(async () => {

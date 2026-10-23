@@ -53,6 +53,10 @@ async function answered(cmd, reply) {
   const siblings = await prisma.deviceCommand.findMany({ where: { patientId: cmd.patientId, type: 'ask', status: { not: 'done' }, createdAt: { gte: new Date(Date.now() - 15 * 60000) }, NOT: { id: cmd.id } } });
   for (const s of siblings.filter((s) => s.id === groupId || s.payload?.group === groupId)) {
     await prisma.deviceCommand.update({ where: { id: s.id }, data: { status: 'done', doneAt: new Date(), payload: { ...s.payload, superseded_by: cmd.id, escalated: true } } });
+    // The watch takes a question off the wrist when told it was answered elsewhere.
+    if (s.target === 'watch') {
+      await prisma.deviceCommand.create({ data: { patientId: s.patientId, type: 'dismiss', target: 'watch', payload: { ref: s.id }, createdBy: 'system', senderName: 'Assist', expiresAt: new Date(Date.now() + 10 * 60000) } });
+    }
   }
   const patient = await prisma.patient.findUnique({ where: { id: cmd.patientId }, select: { name: true } });
   const first = (patient?.name || 'They').split(' ')[0];

@@ -106,7 +106,7 @@ async function createCommand(req, res) {
 async function listCommands(req, res) {
   if (!ownPatient(req, res)) return;
   await expireOld(req.params.id);
-  const cmds = await prisma.deviceCommand.findMany({ where: { patientId: req.params.id }, orderBy: { createdAt: 'desc' }, take: 20 });
+  const cmds = await prisma.deviceCommand.findMany({ where: { patientId: req.params.id, type: { not: 'dismiss' } }, orderBy: { createdAt: 'desc' }, take: 20 });
   res.json(cmds.map(publicCommand));
 }
 
@@ -133,6 +133,8 @@ async function pullCommands(req, res) {
 async function ackCommand(req, res) {
   const cmd = await prisma.deviceCommand.findUnique({ where: { id: req.params.cid } });
   if (!cmd || cmd.patientId !== req.device.patientId) return res.status(404).json({ error: 'Unknown command' });
+  // Already answered on the other device: keep the first answer.
+  if (cmd.payload?.superseded_by) return res.json({ ok: true, superseded: true });
   const ok = req.body?.ok !== false;
   let data;
   if (!ok) data = { status: 'failed', error: String(req.body?.error || '').slice(0, 200), doneAt: new Date() };
