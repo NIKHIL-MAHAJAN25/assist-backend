@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { mergePayload } = require('../utils/mergePayload');
 
 // "Does the family need to know?" — ai-prompting-patterns.md §3, decisions-log 2026-10-17.
 //
@@ -77,12 +78,14 @@ function buildRequest({ firstName, event, recent, ruleSaysNotify }) {
   };
 }
 
-// The hosted API's response shape isn't fully documented; accept the plausible variants.
+// Seen from the live API (drex-v2.0): {"notify":{"type":"noul","noul":0.0932},
+// "urgency":{"type":"choice","choice":"routine","confidence":0.55,"probabilities":{…}}}.
+// Other plausible shapes are still accepted in case the API changes.
 function readNoul(a) {
   if (a == null) return null;
   if (typeof a === 'number') return a;
   if (typeof a === 'boolean') return a ? 1 : 0;
-  const v = a.probability ?? a.p ?? a.yes ?? a.score ?? a.value ?? a.answer;
+  const v = a.noul ?? a.probability ?? a.p ?? a.yes ?? a.score ?? a.value ?? a.answer;
   if (typeof v === 'number') return v;
   if (typeof v === 'boolean') return v ? 1 : 0;
   return null;
@@ -177,9 +180,10 @@ async function decide(entryId) {
     data: {
       agentDecision: toAgentDecision(finalNotify, finalUrgency),
       requiresAttention: finalNotify,
-      payload: { ...(entry.payload || {}), decision: record },
     },
   });
+  // Merged in the database, so face recognition writing to the same entry can't be overwritten.
+  await mergePayload(entry.id, { decision: record });
   return record;
 }
 
