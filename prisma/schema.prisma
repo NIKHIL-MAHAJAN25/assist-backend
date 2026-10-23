@@ -52,6 +52,10 @@ model Patient {
   // Bedtime "your day" story: local time (HH:MM) the phone reads it; null = off.
   bedtimeStoryAt String? @default("21:00") @map("bedtime_story_at")
 
+  // Faces recognised by the home camera: say "Sarah is here to see you" on her phone (off by default:
+  // a wrong name said aloud is worse than none). Family are always told about visits either way.
+  announceFaces Boolean @default(false) @map("announce_faces")
+
   users             User[]
   emergencyContacts EmergencyContact[]
   devices       Device[]

@@ -35,12 +35,15 @@ function renderLines(entries, attempts, commands = []) {
       const quiet = p.activity_key === 'empty_room' || p.activity_key === 'not_visible';
       const key = quiet ? 'quiet' : p.activity_key || p.activity;
       const prev = items[items.length - 1];
+      // Family the camera recognised in this photo (faceService), e.g. ["Sarah"].
+      const names = (p.people || []).map((x) => x.name).filter(Boolean);
       if (prev && prev.kind === 'frame' && prev.key === key && !e.requiresAttention && t - prev.end <= MERGE_GAP_MIN * 60000) {
         prev.end = t;
+        for (const n of names) if (!prev.people.includes(n)) prev.people.push(n);
         continue;
       }
       items.push({
-        kind: 'frame', key, start: t, end: t,
+        kind: 'frame', key, start: t, end: t, people: [...names],
         text: quiet
           ? 'Camera · no one in view'
           : `${flag}Camera · ${p.activity || 'activity'}${p.person_state && p.person_state !== 'not visible' ? ` (${p.person_state})` : ''}${flag ? decided : ''}`,
@@ -97,7 +100,8 @@ function renderLines(entries, attempts, commands = []) {
   items.sort((a, b) => a.start - b.start);
   return items.map((i) => {
     const span = i.end - i.start >= 60000 ? `${hm(i.start)}–${hm(i.end)}` : hm(i.start);
-    return `${span.padEnd(12)} ${i.text}`;
+    const withPeople = i.people?.length ? ` · with ${i.people.join(' and ')}` : '';
+    return `${span.padEnd(12)} ${i.text}${withPeople}`;
   });
 }
 

@@ -4,6 +4,7 @@ const { analyzeFrameWithPrompt, generateText } = require('./geminiService');
 const { framePrompt, validateFrame } = require('./prompts');
 const journal = require('./journalService');
 const { decideFor } = require('./decisionService');
+const faces = require('./faceService');
 
 // Shared work queue for the AI helpers (decisions-log 2026-10-17: 4 Claude + 4 Codex workers, Gemini last).
 //
@@ -131,6 +132,17 @@ async function finishFrame(job, value, { provider, ms }) {
   });
   decideFor(entry.id);
   journal.writeDay(job.patientId).catch((e) => console.error('[journal]', e.message));
+  // Who's in the photo (enrolled family), when someone is in view. Runs after the moment is saved,
+  // so a slow or failed face check never delays or loses the moment itself.
+  if (image && !['empty_room', 'not_visible'].includes(value.activity_key)) {
+    faces.recogniseEntry(entry, image)
+      .then(async (r) => {
+        if (!r?.people?.length) return;
+        await faces.announceVisitors(entry, r.people);
+        await journal.writeDay(job.patientId);
+      })
+      .catch((e) => console.error('[faces]', e.message));
+  }
   // A fall on camera: ask her straight away whether she's okay (#15).
   if (value.activity_key === 'fallen') {
     require('./fallCheck').start(job.patientId, { logEntryId: entry.id }).catch((e) => console.error('[fall]', e.message));

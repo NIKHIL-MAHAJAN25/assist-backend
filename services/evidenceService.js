@@ -38,7 +38,8 @@ function decisionOf(entry) {
 function frameLabel(p) {
   if (QUIET.has(p.activity_key)) return 'no one in view';
   const state = p.person_state && !/not visible|unknown/i.test(p.person_state) ? ` (${p.person_state})` : '';
-  return `${p.activity || p.activity_key || 'something'}${state}`;
+  const people = (p.people || []).map((x) => x.name).filter(Boolean);
+  return `${p.activity || p.activity_key || 'something'}${state}${people.length ? `, with ${people.join(' and ')}` : ''}`;
 }
 
 /**
