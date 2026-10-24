@@ -1,5 +1,5 @@
 const prisma = require('../config/prisma');
-const { generateQuizQuestions } = require('../services/geminiService');
+const { quizFor, badQuestion } = require('../services/patientMemory');
 
 function startOfDay(date) {
   const d = new Date(date);
@@ -19,17 +19,18 @@ async function getTodayQuiz(req, res) {
   const today = new Date();
   const existing = await prisma.quizQuestion.findMany({
     where: { patientId: patient_id, date: { gte: startOfDay(today), lte: endOfDay(today) } },
+    include: { _count: { select: { attempts: true } } },
   });
-  if (existing.length > 0) return res.json(existing);
+  // Questions from the old generator ("what was in front of your camera at 4:30?") are replaced, as
+  // long as nobody has answered them yet.
+  const stale = existing.filter((q) => q._count.attempts === 0 && badQuestion(q));
+  if (stale.length) await prisma.quizQuestion.deleteMany({ where: { id: { in: stale.map((q) => q.id) } } });
+  const keep = existing.filter((q) => !stale.includes(q)).map(({ _count, ...q }) => q);
+  if (keep.length > 0) return res.json(keep);
 
-  const todaysEntries = await prisma.logEntry.findMany({
-    where: { patientId: patient_id, timestamp: { gte: startOfDay(today), lte: endOfDay(today) } },
-    orderBy: { timestamp: 'asc' },
-  });
-
-  if (todaysEntries.length === 0) return res.json([]);
-
-  const generated = await generateQuizQuestions(todaysEntries);
+  const patient = await prisma.patient.findUnique({ where: { id: patient_id }, select: { id: true, name: true } });
+  const generated = await quizFor(patient);
+  if (!generated.length) return res.json([]);
 
   const created = await prisma.$transaction(
     generated.map((q) =>

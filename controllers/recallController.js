@@ -1,18 +1,15 @@
 const prisma = require('../config/prisma');
-const { answerRecallQuery, clarifyTranscript } = require('../services/geminiService');
+const { clarifyTranscript } = require('../services/geminiService');
+const { answerQuestion } = require('../services/patientMemory');
 
 async function recallQuery(req, res) {
   const { query_text } = req.body;
   if (!query_text) return res.status(400).json({ error: 'query_text is required' });
 
-  const device = req.device;
-  const recentEntries = await prisma.logEntry.findMany({
-    where: { patientId: device.patientId },
-    orderBy: { timestamp: 'desc' },
-    take: 50,
-  });
-
-  const answerText = await answerRecallQuery(query_text, recentEntries);
+  // Answered from today's moments by the helper queue (Claude / Codex workers, Gemini as fallback);
+  // never fails — the patient gets a plain, true answer even if no helper replies.
+  const patient = await prisma.patient.findUnique({ where: { id: req.device.patientId }, select: { id: true, name: true } });
+  const answerText = await answerQuestion(patient, String(query_text).slice(0, 300));
   res.json({ answer_text: answerText });
 }
 
