@@ -89,6 +89,7 @@ function describe(c) {
     case 'ask': return `asked "${p.question}"${p.reply ? ` — answered "${p.reply}"` : ''}`;
     case 'voice': return `voice note${p.text ? ` ("${p.text}")` : ''}`;
     case 'reminder': return `reminder "${p.text}" at ${new Date(p.at).toTimeString().slice(0, 5)}`;
+    case 'sms': return `texted ${(p.to || []).length} emergency contact${(p.to || []).length === 1 ? '' : 's'} (${p.reason || 'alert'})`;
     case 'capture': return `took a photo${p.activity ? ` — ${p.activity}` : ''}`;
     default: return TYPES[c.type]?.label.toLowerCase() || c.type;
   }

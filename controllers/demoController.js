@@ -4,6 +4,7 @@ const journal = require('../services/journalService');
 const { enqueueFrame } = require('../services/jobQueue');
 const { recordPing } = require('./geofenceController');
 const history = require('../services/demoHistory');
+const sms = require('../services/smsService');
 
 const SCENES = ['eating', 'tv', 'resting', 'leaving', 'fall', 'empty'];
 
@@ -23,12 +24,14 @@ function guard(req, res) {
 async function state(req, res) {
   if (!demo.isDemoMode()) return res.json({ demo_mode: false });
   if (!guard(req, res)) return;
-  const [scenes, zones, pendingAsk, latestPhoto, historyCount] = await Promise.all([
+  const [scenes, zones, pendingAsk, latestPhoto, historyCount, contacts, texts] = await Promise.all([
     demo.listScenes(req.params.id),
     prisma.geofenceZone.findMany({ where: { patientId: req.params.id }, select: { name: true } }),
     prisma.deviceCommand.findFirst({ where: { patientId: req.params.id, type: 'ask', status: { in: ['pending', 'delivered'] } }, orderBy: { createdAt: 'desc' } }),
     prisma.logEntry.findFirst({ where: { patientId: req.params.id, entryType: 'frame', imagePublicId: { not: null } }, orderBy: { timestamp: 'desc' } }),
     history.hasHistory(req.params.id),
+    prisma.emergencyContact.count({ where: { patientId: req.params.id } }),
+    prisma.deviceCommand.findMany({ where: { patientId: req.params.id, type: 'sms' }, orderBy: { createdAt: 'desc' }, take: 5 }),
   ]);
   res.json({
     demo_mode: true,
@@ -37,6 +40,8 @@ async function state(req, res) {
     has_home: zones.some((z) => /home/i.test(z.name)),
     walk_active: demo.isWalkActive(req.params.id),
     history_entries: historyCount,
+    sms_contacts: contacts,
+    sms_recent: texts.map((c) => ({ id: c.id, reason: c.payload?.reason, text: c.payload?.text, to: (c.payload?.to || []).length, status: c.status, error: c.error || null, at: c.createdAt })),
     pending_ask: pendingAsk ? { id: pendingAsk.id, question: pendingAsk.payload.question, quick: pendingAsk.payload.quick } : null,
     latest_photo: latestPhoto ? { log_entry_id: latestPhoto.id, image_public_id: latestPhoto.imagePublicId, activity: latestPhoto.payload?.activity, at: latestPhoto.timestamp } : null,
   });
@@ -159,4 +164,21 @@ async function clearLog(req, res) {
   res.json({ removed: r.count });
 }
 
-module.exports = { fill, clearLog, state, saveScene, playScene, walk, answer, reset, tick, fall, historyRoute };
+// POST /api/demo/:id/sms  { reason } — text the emergency contacts now, as that alert would
+const DEMO_TEXTS = {
+  left_safe_area: (n) => `${n} has left the safe places.`,
+  heart_spike: (n) => `${n}'s watch sent an emergency: heart rate spike (138 bpm), then still. Please call.`,
+  sos: (n) => `${n} pressed Hold for help on the watch. Please call now.`,
+  test: (n) => `This is a test text about ${n}. Alerts will arrive like this.`,
+};
+async function smsRoute(req, res) {
+  if (!guard(req, res)) return;
+  const reason = req.body?.reason || 'test';
+  if (!DEMO_TEXTS[reason]) return res.status(400).json({ error: 'Unknown text' });
+  const p = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { name: true } });
+  const r = await sms.alert(req.params.id, reason, DEMO_TEXTS[reason](p.name.split(' ')[0]), { force: true });
+  if (!r.queued) return res.status(400).json({ error: 'Add an emergency contact first (Settings → Emergency tag).' });
+  res.json(r);
+}
+
+module.exports = { smsRoute, fill, clearLog, state, saveScene, playScene, walk, answer, reset, tick, fall, historyRoute };

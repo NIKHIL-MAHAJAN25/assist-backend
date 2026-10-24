@@ -126,7 +126,7 @@ const ago = (d) => {
 
 /** Everything the agent may know, as plain text. Also returns the list of sources for the UI. */
 async function gatherContext(patient) {
-  const [status, journalText, zones, commands, watching, objects, albumCount, evidence] = await Promise.all([
+  const [status, journalText, zones, commands, watching, objects, albumCount, evidence, watch, texts, contacts, tagTaps] = await Promise.all([
     getPatientStatus(patient),
     journal.writeDay(patient.id).then(() => journal.readDay(patient.id)),
     prisma.geofenceZone.findMany({ where: { patientId: patient.id }, select: { name: true } }),
@@ -135,17 +135,36 @@ async function gatherContext(patient) {
     recentObjects(patient.id).catch(() => []),
     prisma.memory.count({ where: { patientId: patient.id } }),
     buildEvidence(patient.id).catch(() => []),
+    require('./watchService').vitals(patient.id, 'today').catch(() => null),
+    prisma.deviceCommand.findMany({ where: { patientId: patient.id, type: 'sms', createdAt: { gte: new Date(Date.now() - 24 * 3600e3) } }, orderBy: { createdAt: 'desc' }, take: 5 }),
+    prisma.emergencyContact.findMany({ where: { patientId: patient.id }, orderBy: { sortOrder: 'asc' }, select: { name: true, relation: true } }),
+    prisma.logEntry.findMany({ where: { patientId: patient.id, entryType: 'sighting', timestamp: { gte: new Date(Date.now() - 24 * 3600e3) } }, orderBy: { timestamp: 'desc' }, take: 3 }),
   ]);
   const loc = status.location;
   const where = loc.inside_safe_zone === false
     ? 'OUTSIDE all safe places'
     : loc.zone_name ? `at ${loc.zone_name} (a safe place)` : loc.inside_safe_zone ? 'inside a safe place' : 'unknown';
 
+  const STATE = { normal: 'calm', confusion: 'unsettled (raised heart rate, pacing)', emergency: 'EMERGENCY' };
+  const wl = watch?.latest;
+  const ws = watch?.summary;
+  const watchLine = !watch?.device?.paired
+    ? 'no watch paired'
+    : wl
+      ? `${wl.bpm} bpm, ${wl.motion === 'sos' ? 'PRESSED HOLD FOR HELP' : STATE[wl.scenario] || wl.scenario} (${ago(wl.at)})` +
+        (ws ? `; today resting average ${ws.resting_avg ?? '?'} bpm, highest ${ws.max?.bpm ?? '?'}, ${ws.minutes_unsettled || 0} min unsettled, ${ws.emergencies || 0} emergenc${ws.emergencies === 1 ? 'y' : 'ies'}` : '') +
+        (watch.device.battery != null ? `; watch battery ${watch.device.battery}%` : '')
+      : 'paired, no readings yet';
+
   const lines = [
     `Now: ${new Date().toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' })}`,
     `Last reading from their devices: ${ago(status.last_update)}${status.is_stale ? ' (STALE — devices quiet for a while)' : ''}`,
     `Phone location: ${where}`,
     `Latest camera activity: ${status.current_activity || 'none today'}`,
+    `Watch (heart rate): ${watchLine}`,
+    `Emergency tag taps (24 h): ${tagTaps.length ? tagTaps.map((t) => `${t.payload?.kind === 'location' ? 'a finder shared their location' : 'someone tapped the tag'} ${ago(t.timestamp)}`).join('; ') : 'none'}`,
+    `Emergency contacts for texts: ${contacts.length ? contacts.map((c) => `${c.name}${c.relation ? ` (${c.relation})` : ''}`).join(', ') : 'none set up'}`,
+    `Text alerts sent (24 h): ${texts.length ? texts.map((t) => `${t.payload?.reason} (${t.status}, ${ago(t.createdAt)})`).join('; ') : 'none'}`,
     `Unacknowledged alerts: ${status.needs_attention_count}`,
     `Safe places: ${zones.map((z) => z.name).join(', ') || 'none set up'}`,
     `Memory quiz today: ${status.today.quiz_total ? `${status.today.quiz_correct} of ${status.today.quiz_total} right` : 'not taken yet'}`,
@@ -157,7 +176,7 @@ async function gatherContext(patient) {
     text: `${lines.join('\n')}\n\nObjects the camera noticed (last 3 days, newest sighting of each):\n${objects.length ? objects.join('\n') : '(none)'}` +
       `\n\nToday's journal (oldest first):\n${journalText.trim() || '(empty)'}` +
       `\n\nEvidence you can cite (today, oldest first):\n${evidenceText(evidence)}`,
-    sources: ['location', 'camera', 'journal', 'alerts', ...(commands.length ? ['messages'] : []), ...(objects.length ? ['objects'] : [])],
+    sources: ['location', 'camera', ...(watch?.device?.paired ? ['watch'] : []), 'journal', 'alerts', ...(texts.length ? ['texts'] : []), ...(commands.length ? ['messages'] : []), ...(objects.length ? ['objects'] : [])],
     status,
     evidence,
   };
@@ -166,7 +185,7 @@ async function gatherContext(patient) {
 function buildPrompt({ firstName, caregiverName, context, history, message }) {
   const convo = (history || []).slice(-8).map((t) => `${t.role === 'user' ? caregiverName : 'Assistant'}: ${String(t.text).slice(0, 600)}`).join('\n');
   return `You are the Assist family assistant. You help ${caregiverName}, a family member of ${firstName}, who lives
-with memory loss and is watched over by a home camera, their phone's location, and reminders. Answer ONLY from
+with memory loss and is watched over by a home camera, their phone's location, a heart-rate watch, and reminders. Answer ONLY from
 the context below; if it doesn't say, say you don't know. Be brief and warm (1–3 sentences), plain words, no
 medical advice. If something looks unsafe, say so plainly and suggest calling them.
 

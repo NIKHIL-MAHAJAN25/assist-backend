@@ -72,4 +72,4 @@ async function publicView(patient) {
   };
 }
 
-module.exports = { ensureTag, newCode, caregiverView, publicView, DEFAULT_NOTE };
+module.exports = { ensureTag, newCode, caregiverView, publicView, publicBase, DEFAULT_NOTE };

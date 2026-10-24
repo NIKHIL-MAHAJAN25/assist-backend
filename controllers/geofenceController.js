@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const { isInsideAnyZone } = require('../services/geofenceService');
 const { decideFor } = require('../services/decisionService');
 const { isWalkActive } = require('../services/demoService');
+const sms = require('../services/smsService');
 
 const REFLAG_MINUTES = 30;
 
@@ -26,6 +27,7 @@ async function recordPing(device, lat, lng, at = new Date(), extra = {}) {
   // The phone pings every minute. Flag the moment she leaves, then at most one reminder every
   // REFLAG_MINUTES while she stays out — not one alert per ping.
   let requiresAttention = false;
+  let justLeft = false;
   if (!insideSafeZone) {
     const [previous, lastFlag] = await Promise.all([
       prisma.logEntry.findFirst({
@@ -37,7 +39,7 @@ async function recordPing(device, lat, lng, at = new Date(), extra = {}) {
         orderBy: { timestamp: 'desc' },
       }),
     ]);
-    const justLeft = !previous || previous.payload?.inside_safe_zone !== false;
+    justLeft = !previous || previous.payload?.inside_safe_zone !== false;
     const reminderDue = !lastFlag || at - lastFlag.timestamp >= REFLAG_MINUTES * 60000;
     requiresAttention = justLeft || reminderDue;
   }
@@ -55,6 +57,10 @@ async function recordPing(device, lat, lng, at = new Date(), extra = {}) {
 
   // Only ask the decision layer about pings that change something; routine in-zone pings stay rules-only.
   if (requiresAttention) decideFor(logEntry.id);
+  if (justLeft) {
+    const p = await prisma.patient.findUnique({ where: { id: device.patientId }, select: { name: true } });
+    sms.quietly(device.patientId, 'left_safe_area', `${(p?.name || 'They').split(' ')[0]} has left the safe places.`);
+  }
   return { log_entry_id: logEntry.id, inside_safe_zone: insideSafeZone };
 }
 

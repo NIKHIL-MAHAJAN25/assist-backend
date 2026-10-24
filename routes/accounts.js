@@ -59,6 +59,7 @@ router.post('/demo/:id/fall', ...family, demo.fall);
 router.post('/demo/:id/history', ...family, demo.historyRoute);
 router.delete('/demo/:id/history', ...family, demo.historyRoute);
 router.post('/demo/:id/fill', ...family, demo.fill);
+router.post('/demo/:id/sms', ...family, demo.smsRoute);
 router.post('/demo/:id/clear-log', ...family, demo.clearLog);
 router.post('/demo/:id/watch',...family, watchCtl.demoWatch);
 router.post('/demo/:id/watch/history', ...family, watchCtl.demoWatchHistory);

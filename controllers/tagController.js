@@ -95,6 +95,7 @@ async function getPublicTag(req, res) {
         requiresAttention: true,
       },
     });
+    require('../services/smsService').quietly(patient.id, 'tag_scan', `Someone tapped ${patient.name.split(' ')[0]}'s emergency tag and is with them now. They may need help.`);
   }
   res.json(await publicView(patient));
 }

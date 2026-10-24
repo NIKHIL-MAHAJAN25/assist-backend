@@ -82,6 +82,7 @@ async function escalate(cmd, why) {
       data: { patientId: cmd.patientId, type: 'ring', payload: {}, createdBy: 'system', senderName: 'Assist', expiresAt: new Date(Date.now() + 10 * 60000) },
     }),
   ]);
+  require('./smsService').quietly(cmd.patientId, 'fall', `Possible fall: ${first} needs you. ${why}. Please call now.`);
 }
 
 /** Scheduler: escalate fall checks nobody answered in time. */

@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const sms = require('./smsService');
 const fallCheck = require('./fallCheck');
 
 // The watch (vitals are scripted scenarios, not live sensors — spec §8.5). Readings live in
@@ -35,7 +36,9 @@ async function recordReading(device, { scenario, heart_rate, motion_pattern, tim
       prisma.familyEvent.create({ data: { patientId: pid, kind: 'sos', severity: 'act', title: `⚠ ${first} pressed Hold for help on the watch`, body: 'The watch asked for help. Their phone is ringing. Call now.', refId: entry.id } }),
       prisma.deviceCommand.create({ data: { patientId: pid, type: 'ring', payload: {}, createdBy: 'system', senderName: 'Assist', expiresAt: new Date(Date.now() + 10 * 60000) } }),
     ]);
+    sms.quietly(pid, 'sos', `${first} pressed Hold for help on the watch. Please call now.`);
   } else if (stored === 'emergency') {
+    sms.quietly(pid, 'heart_spike', `${await firstName(pid)}'s watch sent an emergency: heart rate spike (${heart_rate} bpm), then still. Please call.`);
     await fallCheck.start(pid, { logEntryId: entry.id, reason: 'The watch sent an emergency (heart rate spike, then still)' }).catch(() => {});
   } else if (stored === 'confusion') {
     const recent = await prisma.familyEvent.findFirst({ where: { patientId: pid, kind: 'watch_unsettled', createdAt: { gte: new Date(Date.now() - UNSETTLED_EVERY_MS) } } });
